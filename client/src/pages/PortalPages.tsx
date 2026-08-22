@@ -17,7 +17,20 @@ import type { ChildRecord, RiskLevel, Role, VaccinationStatus } from "@/types";
 const iconClass = "h-4 w-4";
 
 function AuthFrame({ children }: { children: React.ReactNode }) {
-  return <div className="auth-frame min-h-[100dvh] bg-mist px-4 py-5 sm:px-6 lg:flex lg:h-[100dvh] lg:min-h-0 lg:items-center lg:justify-center lg:overflow-hidden lg:p-0"><main className="auth-main mx-auto flex w-full max-w-xl flex-col justify-center py-8 lg:max-h-[100dvh] lg:overflow-y-auto lg:py-10">{children}</main></div>;
+  return (
+    <div className="auth-frame relative min-h-[100dvh] overflow-hidden bg-navy px-4 py-6 sm:px-6 lg:flex lg:h-[100dvh] lg:min-h-0 lg:items-center lg:justify-center lg:p-6">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "radial-gradient(circle, #ffffff 1.5px, transparent 1.5px)", backgroundSize: "26px 26px" }} />
+      <div className="pointer-events-none absolute -right-28 -top-28 h-[420px] w-[420px] rounded-full bg-teal-500/25 blur-[110px]" />
+      <div className="pointer-events-none absolute -bottom-28 -left-28 h-[420px] w-[420px] rounded-full bg-[#f37c64]/15 blur-[110px]" />
+      <main className="auth-main relative z-10 mx-auto flex w-full max-w-[27rem] flex-col justify-center py-4 lg:max-h-[100dvh] lg:overflow-y-auto lg:py-0">
+        <div className="auth-card relative overflow-hidden rounded-[1.75rem] border border-white/60 bg-white shadow-[0_35px_80px_-35px_rgba(6,20,30,.6)]">
+          <span className="pointer-events-none absolute left-9 top-0 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-navy ring-[5px] ring-white" />
+          <div className="h-1.5 w-full bg-gradient-to-r from-teal via-[#f37c64] to-teal" />
+          <div className="auth-content px-7 py-8 sm:px-9 sm:py-9">{children}</div>
+        </div>
+      </main>
+    </div>
+  );
 }
 
 export function LoginPage() {
@@ -29,7 +42,38 @@ export function LoginPage() {
   const login = async () => { setLoading(true); await authService.login(role); setLoading(false); setLocation(role === "parent" ? "/parent/dashboard" : "/asha/area-registration"); };
   const title = tab === "login" ? "Welcome back" : "Create your account";
   const subtitle = role === "parent" ? "Track your child’s vaccination journey" : "Manage your panchayat’s immunisation records";
-  return <AuthFrame><div className="auth-content px-2 sm:px-7"><BrandMark /><div className="auth-title-block mt-11"><h1 className="font-display text-4xl font-extrabold tracking-tight text-ink">{title}</h1><p className="mt-2 text-lg text-slate-500">{subtitle}</p></div><div className="role-switch auth-role-switch mt-9"><button onClick={() => setRole("parent")} className={`role-switch-button ${role === "parent" ? "role-switch-active" : ""}`}><UserRound className={iconClass} />Parent Login</button><button onClick={() => setRole("asha")} className={`role-switch-button ${role === "asha" ? "role-switch-active" : ""}`}><HeartPulse className={iconClass} />ASHA Worker Login</button></div><div className="auth-tabs mt-8 flex gap-7 border-b border-slate-200"><button onClick={() => setTab("login")} className={`tab-button ${tab === "login" ? "tab-button-active" : ""}`}>Log in</button><button onClick={() => setTab("register")} className={`tab-button ${tab === "register" ? "tab-button-active" : ""}`}>Register</button></div>{tab === "login" ? <div className="auth-login-fields mt-8 space-y-5"><label className="field-label">{role === "parent" ? "Parent mobile number" : "Panchayat / Worker ID"}<input className="field-control" defaultValue={role === "parent" ? "+91 90000 00000" : "ASHA-PUN-08"} /></label>{role === "parent" ? <label className="field-label">OTP<div className="flex gap-3"><input className="field-control text-center font-display tracking-[.45em]" placeholder="Enter OTP" defaultValue={otpSent ? "482913" : ""} /><button onClick={() => { setOtpSent(true); toast.success("OTP sent to parent mobile number."); }} className="secondary-button whitespace-nowrap">{otpSent ? "Resend" : "Send OTP"}</button></div></label> : <label className="field-label">Password<input type="password" defaultValue="vaxicare" className="field-control" /></label>}<button onClick={login} disabled={loading} className="primary-button mt-2 w-full text-base">{loading ? "Verifying..." : role === "parent" ? "Verify & Continue" : "Log In to Dashboard"}<ArrowRight className="h-4 w-4" /></button><p className="text-center text-sm text-slate-400">New here? <button onClick={() => setTab("register")} className="font-bold text-teal">Create an account</button></p></div> : <RegisterPanel role={role} onBack={() => setTab("login")} onDone={() => setLocation(role === "parent" ? "/parent/child-registration" : "/asha/register")} />}</div></AuthFrame>;
+  return (
+    <AuthFrame>
+      <BrandMark />
+      <div className="auth-title-block mt-7">
+        <p className="care-kicker">{tab === "login" ? "Secure sign in" : "New account"}</p>
+        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">{title}</h1>
+        <p className="mt-2 text-base text-slate-500 sm:text-lg">{subtitle}</p>
+      </div>
+      <div className="role-switch auth-role-switch mt-7">
+        <button onClick={() => setRole("parent")} className={`role-switch-button ${role === "parent" ? "role-switch-active" : ""}`}><UserRound className={iconClass} />Parent Login</button>
+        <button onClick={() => setRole("asha")} className={`role-switch-button ${role === "asha" ? "role-switch-active" : ""}`}><HeartPulse className={iconClass} />ASHA Worker Login</button>
+      </div>
+      <div className="auth-tabs mt-6 flex gap-7 border-b border-slate-200">
+        <button onClick={() => setTab("login")} className={`tab-button ${tab === "login" ? "tab-button-active" : ""}`}>Log in</button>
+        <button onClick={() => setTab("register")} className={`tab-button ${tab === "register" ? "tab-button-active" : ""}`}>Register</button>
+      </div>
+      {tab === "login" ? (
+        <div className="auth-login-fields mt-6 space-y-4">
+          <label className="field-label">{role === "parent" ? "Parent mobile number" : "Panchayat / Worker ID"}<input className="field-control" defaultValue={role === "parent" ? "+91 90000 00000" : "ASHA-PUN-08"} /></label>
+          {role === "parent" ? (
+            <label className="field-label">OTP<div className="flex gap-3"><input className="field-control text-center font-display tracking-[.45em]" placeholder="Enter OTP" defaultValue={otpSent ? "482913" : ""} /><button onClick={() => { setOtpSent(true); toast.success("OTP sent to parent mobile number."); }} className="secondary-button whitespace-nowrap">{otpSent ? "Resend" : "Send OTP"}</button></div></label>
+          ) : (
+            <label className="field-label">Password<input type="password" defaultValue="vaxicare" className="field-control" /></label>
+          )}
+          <button onClick={login} disabled={loading} className="primary-button mt-2 w-full text-base">{loading ? "Verifying..." : role === "parent" ? "Verify & Continue" : "Log In to Dashboard"}<ArrowRight className="h-4 w-4" /></button>
+          <p className="text-center text-sm text-slate-400">New here? <button onClick={() => setTab("register")} className="font-bold text-teal">Create an account</button></p>
+        </div>
+      ) : (
+        <RegisterPanel role={role} onBack={() => setTab("login")} onDone={() => setLocation(role === "parent" ? "/parent/child-registration" : "/asha/register")} />
+      )}
+    </AuthFrame>
+  );
 }
 
 function RegisterPanel({ role, onBack, onDone }: { role: Role; onBack: () => void; onDone: () => void }) {
@@ -148,4 +192,14 @@ function ChartLegend({ data }: { data: { label: string; value: number; fill: str
 export function AshaProfile() { return <AppShell role="asha"><PageHero eyebrow="ASHA profile" title="Your frontline care identity" detail="The location and service information associated with your account and assigned child records." image={assets.ashaCare} /><div className="grid gap-6 xl:grid-cols-[.75fr_1.25fr]"><section className="surface-card p-6"><div className="grid h-20 w-20 place-items-center rounded-3xl bg-teal text-2xl font-black text-white">SP</div><h2 className="mt-5 font-display text-2xl font-extrabold text-ink">{ashaProfile.name}</h2><p className="mt-1 text-sm text-slate-500">{ashaProfile.ashaId} · Phone verified</p><div className="mt-6 rounded-2xl bg-teal-50 p-4 text-sm"><p className="font-bold text-teal">{ashaProfile.area.name}</p><p className="mt-1 text-teal/70">{ashaProfile.area.areaId}</p></div></section><section className="surface-card p-6"><SectionHeading title="Account and area information" detail="These fields will be sourced from the ASHA and Area APIs when the backend connects." /><div className="grid gap-x-10 gap-y-5 md:grid-cols-2"><InfoBlock label="ASHA Worker ID" value={ashaProfile.ashaId} edit={false} /><InfoBlock label="Mobile number" value={ashaProfile.phone} edit={false} /><InfoBlock label="Area ID" value={ashaProfile.area.areaId} edit={false} /><InfoBlock label="District" value={ashaProfile.area.district} edit={false} /><InfoBlock label="Taluka" value={ashaProfile.area.taluka} edit={false} /><InfoBlock label="Village" value={ashaProfile.area.village} edit={false} /></div><div className="mt-8 grid gap-3 sm:grid-cols-4"><SmallMetric label="Assigned children" value={ashaProfile.children} /><SmallMetric label="Vaccinations" value={ashaProfile.vaccinations} /><SmallMetric label="Home visits" value={ashaProfile.visits} /><SmallMetric label="Interventions" value={ashaProfile.interventions} /></div></section></div></AppShell>; }
 function SmallMetric({ label, value }: { label: string; value: number }) { return <div className="rounded-xl bg-slate-50 p-4"><p className="font-display text-2xl font-extrabold text-ink">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{label}</p></div>; }
 
-export function NotFoundPage() { return <AuthFrame><div className="px-4"><BrandMark /><p className="care-kicker mt-16">Not found</p><h1 className="mt-3 font-display text-4xl font-extrabold text-ink">This care page is not available.</h1><p className="mt-3 text-slate-500">Return to the secure VaxiCare login and choose a role.</p><Link href="/login" className="primary-button mt-7">Go to login</Link></div></AuthFrame>; }
+export function NotFoundPage() {
+  return (
+    <AuthFrame>
+      <BrandMark />
+      <p className="care-kicker mt-7">Not found</p>
+      <h1 className="mt-3 font-display text-3xl font-extrabold text-ink sm:text-4xl">This care page is not available.</h1>
+      <p className="mt-3 text-slate-500">Return to the secure VaxiCare login and choose a role.</p>
+      <Link href="/login" className="primary-button mt-7">Go to login</Link>
+    </AuthFrame>
+  );
+}
