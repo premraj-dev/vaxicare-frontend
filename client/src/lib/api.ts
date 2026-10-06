@@ -3,7 +3,9 @@
 
 export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
- ).replace(/\/+$/, "");
+).replace(/\/+$/, "");
+
+export const API_KEY = import.meta.env.VITE_API_KEY || "vaxicare-secret-key";
 
 export type RiskLevel = "Normal" | "Low" | "Medium" | "High";
 
@@ -49,6 +51,7 @@ export type PredictionResponse = {
   risk_level: RiskLevel;
   priority_score: number;
   recommended_action: string;
+  risk_reasons?: string[];
 };
 
 export type ReminderPlanRequest = {
@@ -82,6 +85,45 @@ export type ReminderPlanResponse = {
   reminders: ReminderPlanEvent[];
 };
 
+export type CapacityQueueItem = {
+  child_id: string;
+  child_name: string;
+  parent_name?: string;
+  parent_phone?: string;
+  village: string;
+  next_vaccine: string;
+  next_due_date?: string;
+  missed_doses: number;
+  days_overdue: number;
+  dropout_probability: number;
+  risk_level: RiskLevel;
+  priority_score: number;
+  risk_reasons: string[];
+  recommended_action?: string;
+};
+
+export type VillageCapacityGroup = {
+  village: string;
+  capacity_allocated: number;
+  total_children: number;
+  children: CapacityQueueItem[];
+};
+
+export type AshaCapacityQueueResponse = {
+  asha_id: string;
+  daily_capacity: number;
+  total_children: number;
+  villages: VillageCapacityGroup[];
+  items?: CapacityQueueItem[];
+};
+
+export type DailyScoringResponse = {
+  status: string;
+  total_scored: number;
+  high_risk_count: number;
+  timestamp?: string;
+};
+
 export class ApiError extends Error {
   status: number;
   details?: unknown;
@@ -98,10 +140,16 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const authHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-API-Key": API_KEY,
+    "Authorization": `Bearer ${API_KEY}`,
+  };
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...authHeaders,
       ...options.headers,
     },
   });
@@ -140,3 +188,26 @@ export function createReminderPlan(payload: ReminderPlanRequest) {
     body: JSON.stringify(payload),
   });
 }
+
+export function getAshaCapacityQueue(ashaId = "ASHA-PUN-08", dailyCapacity = 15) {
+  return apiRequest<AshaCapacityQueueResponse>(
+    `/api/v1/asha/capacity-queue?asha_id=${encodeURIComponent(ashaId)}&daily_capacity=${dailyCapacity}`,
+    {
+      method: "GET",
+    },
+  ).catch(async () => {
+    // Fallback to POST if GET is unsupported by backend routing
+    return apiRequest<AshaCapacityQueueResponse>("/api/v1/asha/capacity-queue", {
+      method: "POST",
+      body: JSON.stringify({ asha_id: ashaId, daily_capacity: dailyCapacity }),
+    });
+  });
+}
+
+export function triggerBatchDailyScoring(district = "Pune") {
+  return apiRequest<DailyScoringResponse>("/api/v1/batch/daily-scoring", {
+    method: "POST",
+    body: JSON.stringify({ district }),
+  });
+}
+

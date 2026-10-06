@@ -6,7 +6,9 @@
 
 import {
   createReminderPlan,
+  getAshaCapacityQueue,
   predictDropoutRisk,
+  triggerBatchDailyScoring,
   type PredictionRequest,
   type ReminderPlanRequest,
 } from "@/lib/api";
@@ -51,9 +53,19 @@ export const riskService = {
   },
 };
 
+export const ashaService = {
+  async getCapacityQueue(ashaId?: string, capacity?: number) {
+    return getAshaCapacityQueue(ashaId, capacity);
+  },
+  async triggerDailyScoring(district?: string) {
+    return triggerBatchDailyScoring(district);
+  },
+};
+
 export const interventionService = {
   async recordAction() {
     await wait(420);
     return { success: true };
   },
 };
+

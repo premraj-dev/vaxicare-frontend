@@ -47,7 +47,7 @@ export function SectionHeading({ eyebrow, title, detail, action }: { eyebrow?: s
 
 export function ProgressLine({ value, label, accent = "teal" }: { value: number; label: string; accent?: "teal" | "amber" | "red" | "blue" }) {
   const colors = { teal: "bg-teal", amber: "bg-amber-400", red: "bg-red-500", blue: "bg-blue-500" };
-  return <div><div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium text-slate-600">{label}</span><span className="font-bold text-ink">{value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${colors[accent]}`} style={{ width: `${value}%` }} /></div></div>;
+  return <div><div className="mb-2 flex items-center justify-between text-sm"><span className="font-medium text-slate-600">{label}</span><span className="font-bold text-ink">{value}%</span></div><div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full progress-bar-fill ${colors[accent]}`} style={{ width: `${value}%` }} /></div></div>;
 }
 
 export function EmptyState({ title, detail }: { title: string; detail: string }) {
