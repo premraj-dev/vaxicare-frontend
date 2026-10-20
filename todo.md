@@ -1,0 +1,21 @@
+# Follow-up Tasks
+
+- [x] Add a visible Parent logout control in the desktop account area and mobile navigation.
+- [x] Verify the logout action returns the user to the VaxiCare login screen.
+- [x] Remove the Parent desktop left sidebar and replace it with a simplified header plus bottom navigation.
+- [x] Keep only Overview, Register Child, Vaccination, and Reminders in the Parent primary navigation.
+- [x] Verify the Parent-only navigation on desktop and mobile.
+- [x] Remove the ASHA desktop left sidebar and replace it with a simplified header plus bottom navigation.
+- [x] Make Area Registration the first ASHA setup page and route workers there after ASHA login or registration.
+- [x] Verify the ASHA-only navigation and setup-first route on desktop and mobile.
+- [x] Add a one-time Area setup complete state with a clear route to the ASHA dashboard.
+- [x] Add a guided ASHA onboarding checklist with interactive completion states and task links.
+- [x] Verify the onboarding experience on the Area Registration and ASHA Dashboard screens.
+- [x] Produce the full backend implementation checklist for authentication, data, APIs, reminder scheduling, delivery integrations, and dashboard analytics.
+- [x] Produce a provider-selection and API-integration guide covering free prototype tools and live delivery options.
+- [x] Fix authentication-screen viewport overflow so OTP and primary actions remain visible at shorter desktop heights.
+- [x] Verify the authentication layout on short desktop and mobile viewports.
+- [x] Compact Parent and ASHA registration forms so all controls remain reachable at short desktop heights.
+- [x] Verify the Parent and ASHA registration layouts on short desktop and mobile viewports.
+- [x] Normalize Parent and ASHA authentication screens to a medium desktop scale with consistent typography and compact controls.
+- [x] Verify both role login screens fit through the OTP/action section without scrolling at the preview height.
