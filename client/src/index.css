@@ -135,7 +135,7 @@
 @keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media (min-width: 640px) { .page-pad { padding-bottom: 6rem; } }
-@media (min-width: 1024px) { .page-pad { padding-top: 1.25rem; padding-bottom: 2.5rem; } }
+@media (min-width: 1024px) { .page-pad { padding-top: 1.25rem; padding-bottom: 6rem; } }
 @media (min-width: 1024px) {
   .auth-content { max-width: 32rem; }
   .auth-content h1 { font-size: 1.875rem; line-height: 1.18; }
@@ -183,4 +183,3 @@
 }
 
 @media (prefers-reduced-motion: no-preference) { .page-pad > * { animation: page-in 220ms cubic-bezier(.23,1,.32,1) both; } }
-

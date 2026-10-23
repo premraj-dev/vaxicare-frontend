@@ -6,7 +6,9 @@ import { Route, Switch, useLocation } from "wouter";
 import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { AshaAnalytics, AshaAreaRegistration, AshaDashboard, AshaInterventions, AshaProfile, AshaRegister, AshaRiskDashboard, AshaVaccinationEntry, AshaVaccinationHistory, LoginPage, NotFoundPage, ParentDashboard, ParentProfile, ParentRegistration, ParentReminders, ParentVaccination } from "./pages/PortalPages";
+import { AshaAreaRegistration, AshaRegister, AshaVaccinationEntry, AshaVaccinationHistory, LoginPage, NotFoundPage, ParentRegistration } from "./pages/PortalPages";
+import { AshaAnalytics, AshaInterventions, AshaRiskDashboard } from "./pages/LiveDashboardPages";
+import { AshaDashboard, AshaProfile, ParentDashboard, ParentProfile, ParentReminders, ParentVaccination } from "./pages/PortalDashboardPages";
 
 
 function RedirectToLogin() {

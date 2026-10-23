@@ -2,7 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, CheckCircle2, CircleDashed, Clock3, ShieldCheck } from "lucide-react";
-import type { RiskLevel, VaccinationStatus } from "@/types";
+import type { RiskLevel } from "@/types";
 
 export function RiskBadge({ risk }: { risk: RiskLevel }) {
   const styles: Record<RiskLevel, string> = {
@@ -15,16 +15,17 @@ export function RiskBadge({ risk }: { risk: RiskLevel }) {
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${styles[risk]}`}><Icon className="h-3.5 w-3.5" />{risk} risk</span>;
 }
 
-export function StatusBadge({ status }: { status: VaccinationStatus | "Scheduled" | "Sent" | "Immediate action" | "Resolved" | "Completed" | "Pending" }) {
-  const label = status.toString();
-  const style = label === "Completed" || label === "Resolved" || label === "Sent"
+export function StatusBadge({ status }: { status: string }) {
+  const label = status.toString().replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  const normalized = status.toLowerCase();
+  const style = normalized === "completed" || normalized === "resolved" || normalized === "sent"
     ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-    : label === "Overdue" || label === "Immediate action"
+    : normalized === "overdue" || normalized === "immediate action"
       ? "bg-red-50 text-red-700 ring-red-200"
-      : label === "Missed"
+      : normalized === "missed"
         ? "bg-amber-50 text-amber-800 ring-amber-200"
         : "bg-blue-50 text-blue-700 ring-blue-200";
-  const Icon = label === "Completed" || label === "Resolved" || label === "Sent" ? CheckCircle2 : label === "Overdue" || label === "Immediate action" ? AlertTriangle : label === "Missed" ? Clock3 : CircleDashed;
+  const Icon = normalized === "completed" || normalized === "resolved" || normalized === "sent" ? CheckCircle2 : normalized === "overdue" || normalized === "immediate action" ? AlertTriangle : normalized === "missed" ? Clock3 : CircleDashed;
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${style}`}><Icon className="h-3.5 w-3.5" />{label}</span>;
 }
 

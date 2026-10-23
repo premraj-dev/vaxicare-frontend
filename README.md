@@ -11,15 +11,15 @@ This repo is the **frontend** (Parent Portal + ASHA Portal). It connects to [`va
 ### For Parents
 - **Dashboard** — circular vaccination-progress ring, "what's next" dose card, risk status at a glance
 - **Visual vaccine timeline** — color-coded dose status (completed / scheduled / action needed)
-- **Smart reminders** — automated reminder plan with SMS + voice playback (Marathi / Hindi / English)
+- **Reminder plans** — API-generated schedule for upcoming doses with language options
 - **Digital health card** — QR-based child health pass
 
 ### For ASHA Workers
-- **Risk queue** — children ranked by ML-predicted dropout probability, not just missed-dose count
-- **Village-level capacity queue** — visit lists grouped by village and capped to daily visit capacity
+- **Risk queue** — assigned children sorted by latest stored ML priority score
+- **Village workload** — assigned children grouped by their village
 - **Explainable risk reasons** — top 2–3 human-readable drivers per flagged child
-- **Daily automated scoring** — one-tap batch re-scoring of all active children
-- **Action modal** — call, send reminder, or schedule a home visit in one flow
+- **Live dashboard counts** — vaccination, overdue, risk, and intervention counts from Supabase
+- **Action modal** — record a call, reminder, follow-up, or home visit in one flow
 
 ---
 
@@ -67,30 +67,47 @@ git clone https://github.com/premraj-dev/vaxicare-frontend.git
 cd vaxicare-frontend
 
 # Install
-npm install
+pnpm install
 
-# Configure environment
-cp .env.example .env
-# set VITE_API_BASE_URL and VITE_API_KEY to point at your vaxicare-ml-api instance
+# Optional local API configuration in .env.local (no browser API key is needed)
+# VITE_API_BASE_URL=http://127.0.0.1:8000
 
 # Run
-npm run dev
+pnpm run dev
 ```
 
-Requires [`vaxicare-ml-api`](https://github.com/premraj-dev/vaxicare-ml-api) running (locally or deployed) for live predictions, risk queue, and reminders.
+For local Supabase-backed dashboards and email OTP login, configure the backend `.env` using [`vaxicare-ml-api/.env.example`](../vaxicare-ml-api/.env.example), run the migration in [`vaxicare-ml-api/migrations/20261022_demo_dashboard.sql`](../vaxicare-ml-api/migrations/20261022_demo_dashboard.sql) in Supabase SQL Editor, and start the API at `http://127.0.0.1:8000`.
 
 ---
 
 ## 🔐 Authentication
 
-API requests to `vaxicare-ml-api` require an `X-API-Key` header in production. Set `VITE_API_KEY` in your `.env`.
+Email OTP is sent and verified by Supabase Auth through the FastAPI backend. Authenticated dashboard requests carry the user's Supabase bearer token; the service-role key is never exposed to the browser.
+
+## Demo data commands
+
+From this frontend folder, with backend `.env` configured. `seed:demo` also requires the API to be running:
+
+```powershell
+pnpm run seed:demo
+pnpm run seed:clear
+```
+
+The commands use the service-role key from `vaxicare-ml-api/.env`; `seed:demo` calls the local model API, while `seed:clear` does not. Clear removes only rows/accounts marked `is_demo = true`. Never put the service-role key in frontend environment variables.
+
+## Validation
+
+```powershell
+pnpm run check
+pnpm run build
+```
 
 ---
 
 ## 📍 Core Demo Flow
 
 ```
-Login → ASHA Dashboard → Risk Queue (village capacity view) → Action (call / reminder / visit)
+Login → ASHA Dashboard → Risk Queue (assigned-child priority) → Action log
 ```
 
 ---

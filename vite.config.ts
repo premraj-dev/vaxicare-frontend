@@ -2,9 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
-import { randomInt } from "node:crypto";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
-import { loadEnv } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
 // =============================================================================
@@ -151,152 +149,6 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-type LocalOtpEntry = {
-          code: string;
-          expiresAt: number;
-        };
-
-function vitePluginLocalEmailOtp(): Plugin {
-  const otpStore = new Map<string, LocalOtpEntry>();
-  const env = {
-    ...loadEnv("production", PROJECT_ROOT, ""),
-    ...loadEnv("development", PROJECT_ROOT, ""),
-    ...process.env,
-  };
-  const resendApiKey = env.VAXI_RESEND || process.env.VAXI_RESEND;
-  const fromEmail = env.VAXI_FROM_EMAIL || process.env.VAXI_FROM_EMAIL || "VaxiCare <onboarding@premrajumap.dev>";
-
-  async function readJson(req: import("node:http").IncomingMessage) {
-    let body = "";
-    for await (const chunk of req) body += chunk.toString();
-    return JSON.parse(body) as Record<string, unknown>;
-  }
-
-  function sendJson(res: import("node:http").ServerResponse, status: number, payload: unknown) {
-    res.statusCode = status;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(payload));
-  }
-
-  return {
-    name: "local-email-otp",
-    configureServer(server: ViteDevServer) {
-      server.middlewares.use("/api/auth/otp/send", async (req, res, next) => {
-        if (req.method !== "POST") return next();
-
-        try {
-          const body = await readJson(req);
-          const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-          if (!email || !email.includes("@")) {
-            sendJson(res, 400, { detail: "A valid email address is required." });
-            return;
-          }
-
-          const code = String(randomInt(100000, 1000000));
-          otpStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-
-          console.log(`\n======================================================`);
-          console.log(`🔑 [VaxiCare Local OTP] Code for ${email}: >>> ${code} <<<`);
-          console.log(`======================================================\n`);
-
-          if (!resendApiKey) {
-            console.log(`[VaxiCare Local OTP] VAXI_RESEND not found. Using local console OTP.`);
-            sendJson(res, 200, {
-              sent: true,
-              code,
-              note: `Dev Mode OTP: ${code} (Console fallback)`
-            });
-            return;
-          }
-
-          try {
-            const resendResponse = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${resendApiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                from: fromEmail,
-                to: [email],
-                subject: "Your VaxiCare verification code",
-                text: `Your VaxiCare verification code is ${code}. It expires in 10 minutes.`,
-                html: `
-                  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
-                    <div style="margin-bottom: 20px;">
-                      <span style="font-size: 22px; font-weight: 800; color: #064E3B;">VaxiCare</span>
-                      <span style="font-size: 12px; color: #059669; margin-left: 8px; font-weight: 600; background: #ecfdf5; padding: 3px 8px; border-radius: 6px;">Child Immunisation</span>
-                    </div>
-                    <p style="font-size: 15px; color: #334155; margin-bottom: 20px; line-height: 1.5;">Here is your verification code to access your VaxiCare account:</p>
-                    <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 20px;">
-                      <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #064E3B; font-family: monospace;">${code}</span>
-                    </div>
-                    <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">This code expires in 10 minutes. If you did not request this, you can safely disregard this message.</p>
-                  </div>
-                `,
-              }),
-            });
-
-            if (!resendResponse.ok) {
-              const errorText = await resendResponse.text();
-              console.warn(`[VaxiCare Local OTP] Resend API notice:`, errorText);
-
-              // If Resend rejected because of domain or recipient restriction
-              if (resendResponse.status === 403 || errorText.includes("testing emails to your own email address")) {
-                sendJson(res, 200, {
-                  sent: true,
-                  code,
-                  note: `Resend test restriction: code is ${code}`
-                });
-                return;
-              }
-
-              sendJson(res, resendResponse.status, { detail: `Resend error: ${errorText}` });
-              return;
-            }
-
-            console.log(`✅ [VaxiCare Local OTP] Email successfully delivered to ${email} via Resend (${fromEmail}).`);
-            sendJson(res, 200, { sent: true });
-          } catch (netErr) {
-            console.warn(`[VaxiCare Local OTP] Network error contacting Resend:`, netErr);
-            sendJson(res, 200, {
-              sent: true,
-              code,
-              note: `Resend unreachable. Dev code: ${code}`
-            });
-          }
-        } catch (error) {
-          sendJson(res, 400, { detail: error instanceof Error ? error.message : "Unable to send the verification email." });
-        }
-      });
-
-      server.middlewares.use("/api/auth/login", async (req, res, next) => {
-        if (req.method !== "POST") return next();
-
-        try {
-          const body = await readJson(req);
-          const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-          const otp = typeof body.otp === "string" ? body.otp.trim() : "";
-          const entry = otpStore.get(email);
-
-          if (!email || !entry || entry.expiresAt < Date.now() || entry.code !== otp) {
-            sendJson(res, 401, { detail: "The verification code is invalid or expired." });
-            return;
-          }
-
-          otpStore.delete(email);
-          sendJson(res, 200, {
-            access_token: `local-email-session-${Date.now()}`,
-            user_profile: { email, role: "parent" },
-          });
-        } catch (error) {
-          sendJson(res, 400, { detail: error instanceof Error ? error.message : "Unable to verify the email code." });
-        }
-      });
-    },
-  };
-}
-
 function vitePluginStorageProxy(): Plugin {
   return {
     name: "manus-storage-proxy",
@@ -364,7 +216,6 @@ const plugins = [
   vitePluginManusRuntime(),
   vitePluginManusDebugCollector(),
   vitePluginStorageProxy(),
-  vitePluginLocalEmailOtp(),
 ];
 
 export default defineConfig({

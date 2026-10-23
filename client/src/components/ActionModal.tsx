@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Phone, Send, Home, CalendarClock, X } from "lucide-react";
 import { toast } from "sonner";
-import { interventionService, reminderService } from "@/services/mockApi";
+import { createIntervention } from "@/lib/api";
 import type { ChildRecord } from "@/types";
 import { RiskBadge } from "@/components/Ui";
 import { DatePicker } from "@/components/DatePicker";
@@ -11,24 +11,41 @@ import { DatePicker } from "@/components/DatePicker";
 export type ActionType = "call" | "reminder" | "visit" | "followup";
 
 const labels = {
-  call: { title: "Call parent", icon: Phone, action: "Start call" },
-  reminder: { title: "Send reminder", icon: Send, action: "Send reminder" },
+  call: { title: "Call parent", icon: Phone, action: "Record call" },
+  reminder: { title: "Record reminder", icon: Send, action: "Record reminder" },
   visit: { title: "Schedule home visit", icon: Home, action: "Mark visit scheduled" },
   followup: { title: "Schedule follow-up", icon: CalendarClock, action: "Schedule follow-up" },
 };
 
-export function ActionModal({ child, type, onClose }: { child: ChildRecord; type: ActionType; onClose: () => void }) {
+export function ActionModal({ child, type, onClose, onSaved }: { child: ChildRecord; type: ActionType; onClose: () => void; onSaved?: () => void | Promise<void> }) {
   const [saving, setSaving] = useState(false);
-  const [actionDate, setActionDate] = useState("2026-08-25");
+  const [actionDate, setActionDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState("");
   const config = labels[type];
   const Icon = config.icon;
   const submit = async () => {
     setSaving(true);
-    if (type === "reminder") await reminderService.sendReminder();
-    else await interventionService.recordAction();
-    setSaving(false);
-    toast.success(type === "reminder" ? "Reminder sent successfully." : `${config.title} recorded successfully.`);
-    onClose();
+    try {
+      const childId = child.id ?? child.childId;
+      if (typeof childId !== "string" || !childId) {
+        throw new Error("This child record has no database id.");
+      }
+      const actionNote = [note.trim(), type === "visit" || type === "followup" ? `Scheduled date: ${actionDate}` : ""]
+        .filter(Boolean)
+        .join(" · ");
+      await createIntervention({
+        child_id: childId,
+        type: type === "visit" ? "home_visit" : type,
+        note: actionNote,
+      });
+      toast.success("Action recorded in Supabase.");
+      await onSaved?.();
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to record this action.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -54,12 +71,12 @@ export function ActionModal({ child, type, onClose }: { child: ChildRecord; type
             <strong>{child.childName}</strong> · {child.childId}
           </p>
           <p>
-            <span className="text-slate-500">Parent email</span><br />
-            <strong>{child.parentEmail}</strong>
+            <span className="text-slate-500">Guardian phone</span><br />
+            <strong>{child.guardianPhone || "Not provided"}</strong>
           </p>
           <p>
             <span className="text-slate-500">Next vaccine</span><br />
-            <strong>{child.nextVaccine}</strong> · {child.nextDueDate}
+            <strong>{child.nextVaccine}</strong> · {child.nextDueDate || "No due date"}
           </p>
           <p>
             <span className="text-slate-500">Current risk</span><br />
@@ -74,12 +91,12 @@ export function ActionModal({ child, type, onClose }: { child: ChildRecord; type
             </div>
             <label className="field-label">
               Notes
-              <input className="field-control" placeholder="Add visit or follow-up notes" />
+              <input value={note} onChange={(event) => setNote(event.target.value)} className="field-control" placeholder="Add visit or follow-up notes" />
             </label>
           </div>
         ) : (
           <p className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
-            This is an API-ready UI simulation. A future backend will connect this action to email or field-visit services.
+            This records the selected action in the intervention log. It does not send a phone call or message.
           </p>
         )}
         <div className="mt-6 flex justify-end gap-3">

@@ -9,6 +9,8 @@
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
+    "seed:demo": "python ..\\vaxicare-ml-api\\scripts\\seed_demo.py seed:demo",
+    "seed:clear": "python ..\\vaxicare-ml-api\\scripts\\seed_demo.py seed:clear",
     "format": "prettier --write ."
   },
   "dependencies": {

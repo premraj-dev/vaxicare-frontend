@@ -1,4 +1,4 @@
-/** Verified Care Console: all role-aware pages use quiet clinical modernism, action-first panels, and API-ready mock interactions. */
+/** Verified Care Console: role-aware pages use a shared, action-first clinical interface. */
 
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -8,14 +8,25 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { ActionModal, type ActionType } from "@/components/ActionModal";
 import { BrandMark } from "@/components/BrandMark";
+import { DashboardNotice, DemoDataBadge } from "@/components/DashboardNotice";
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState, ProgressLine, RiskBadge, SectionHeading, StatCard, StatusBadge } from "@/components/Ui";
 import { areas, ashaProfile, assets, children, coverageData, interventionData, interventions, parentProfile, primaryChild, reminders, trendData, vaccinationRecords } from "@/data/mockData";
-import { loginWithEmailOtp, sendEmailOtp, type AshaCapacityQueueResponse, type ReminderPlanResponse } from "@/lib/api";
-import { ashaService, reminderService, vaccinationService } from "@/services/mockApi";
+import { createReminderPlan, loginWithEmailOtp, resolveIntervention, sendEmailOtp, type ReminderPlanResponse } from "@/lib/api";
+import { useDashboardData } from "@/hooks/useDashboardData";
+import { reminderService, vaccinationService } from "@/services/mockApi";
 import type { ChildRecord, RiskLevel, Role, VaccinationStatus } from "@/types";
 
 const iconClass = "h-4 w-4";
+
+function formatDashboardDate(value: string | null | undefined) {
+  if (!value) return "No upcoming dose";
+  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -57,11 +68,9 @@ export function LoginPage() {
         throw new Error("The login response did not include an access token.");
       }
       localStorage.setItem("access_token", response.access_token);
-      const userProfile = response.user_profile ?? response.user ?? response.profile;
-      if (userProfile) {
-        localStorage.setItem("user_profile", JSON.stringify(userProfile));
-      }
-      setLocation(role === "parent" ? "/parent/dashboard" : "/asha/area-registration");
+      const userProfile = response.user_profile;
+      localStorage.setItem("user_profile", JSON.stringify(userProfile));
+      setLocation(userProfile.role === "parent" ? "/parent/dashboard" : "/asha/dashboard");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to verify your login.");
     } finally {
@@ -76,15 +85,11 @@ export function LoginPage() {
     }
     try {
       const response = await sendEmailOtp({ email: email.trim() });
+      if (!response.sent) {
+        throw new Error("Supabase did not confirm that the verification code was sent.");
+      }
       setOtpSent(true);
-      if (response?.code) {
-        setOtp(response.code);
-      }
-      if (response?.note) {
-        toast.info(response.note, { duration: 7000 });
-      } else {
-        toast.success("Verification code sent to your email.");
-      }
+      toast.success("Verification code sent to your email.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to send the verification code.");
     }
@@ -286,16 +291,12 @@ function RegisterPanel({ role, onBack, onDone }: { role: Role; onBack: () => voi
     setSendingOtp(true);
     try {
       const response = await sendEmailOtp({ email: email.trim() });
+      if (!response.sent) {
+        throw new Error("Supabase did not confirm that the verification code was sent.");
+      }
       setOtpSent(true);
       setEmailVerified(false);
-      if (response?.code) {
-        setOtp(response.code);
-      }
-      if (response?.note) {
-        toast.info(response.note, { duration: 7000 });
-      } else {
-        toast.success("Verification code sent to your email.");
-      }
+      toast.success("Verification code sent to your email.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to send the verification code.");
     } finally {
@@ -316,10 +317,8 @@ function RegisterPanel({ role, onBack, onDone }: { role: Role; onBack: () => voi
       }
       setEmailVerified(true);
       localStorage.setItem("access_token", response.access_token);
-      const userProfile = response.user_profile ?? response.user ?? response.profile;
-      if (userProfile) {
-        localStorage.setItem("user_profile", JSON.stringify(userProfile));
-      }
+      const userProfile = response.user_profile;
+      localStorage.setItem("user_profile", JSON.stringify(userProfile));
       toast.success("Email verified. You can continue registration.");
     } catch (error) {
       setEmailVerified(false);
@@ -416,7 +415,7 @@ function RegisterPanel({ role, onBack, onDone }: { role: Role; onBack: () => voi
   );
 }
 
-function PageHero({ eyebrow, title, detail, image, action }: { eyebrow: string; title: string; detail: string; image?: string; action?: React.ReactNode }) {
+export function PageHero({ eyebrow, title, detail, image, action }: { eyebrow: string; title: string; detail: string; image?: string; action?: React.ReactNode }) {
   return (
     <section className="relative mb-5 overflow-hidden rounded-2xl bg-gradient-to-r from-[#064E3B] via-teal-900 to-emerald-950 py-5 px-5 text-white shadow-md sm:py-6 sm:px-7">
       <img src={image ?? assets.texture} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25 mix-blend-screen" />
@@ -465,15 +464,28 @@ function SimpleVaccinationTimeline({ rows }: { rows: typeof vaccinationRecords }
 
 export function ParentDashboard() {
   const [, setLocation] = useLocation();
-  const completionRate = primaryChild.completionRate || 75;
-  const nextVaccineName = primaryChild.nextVaccine || "Penta-2";
-  const nextDueDate = primaryChild.nextDueDate || "29 Sep 2026";
-  const activeRisk = primaryChild.riskLevel || "Low";
+  const { data, loading, error } = useDashboardData("parent");
+  const dashboardChild = data?.children[0] ?? null;
+  const childRecords = data?.vaccinationRecords.filter(
+    (record) => record.childId === dashboardChild?.id,
+  ) ?? [];
+  const completionRate = dashboardChild?.completionRate ?? 0;
+  const nextVaccineName = loading ? "Loading…" : error ? "Unavailable" : dashboardChild?.nextVaccine ?? "No upcoming dose";
+  const nextDueDate = loading ? "Loading…" : error ? "Unavailable" : formatDashboardDate(dashboardChild?.nextDueDate);
+  const activeRisk = dashboardChild?.riskLevel ?? null;
+  const storedPlan = data?.reminderPlans.find(
+    (item) => item.childId === dashboardChild?.id,
+  )?.plan;
+  const storedReminderCount =
+    typeof storedPlan?.number_of_reminders === "number"
+      ? storedPlan.number_of_reminders
+      : 0;
 
   // Reminder State
   const [voicePlaying, setVoicePlaying] = useState(false);
   const [livePlan, setLivePlan] = useState<ReminderPlanResponse | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
+  const alertRisk = livePlan?.risk_level ?? activeRisk;
 
   // Registration Form State
   const [step, setStep] = useState<1 | 2>(1);
@@ -487,19 +499,24 @@ export function ParentDashboard() {
   };
 
   const createLivePlan = async () => {
+    if (!dashboardChild?.nextDueDate || !dashboardChild.nextVaccine) {
+      toast.error("There is no upcoming dose to plan a reminder for.");
+      return;
+    }
     setLoadingPlan(true);
     try {
-      const parsedDueDate = new Date(primaryChild.nextDueDate || "2026-09-29");
+      const parsedDueDate = new Date(`${dashboardChild.nextDueDate}T00:00:00`);
       const nextDoseDueDate = Number.isNaN(parsedDueDate.getTime())
-        ? "2026-09-29"
+        ? dashboardChild.nextDueDate
         : parsedDueDate.toISOString().slice(0, 10);
 
-      const plan = await reminderService.createPlan({
-        child_id: primaryChild.childId || "CH1004",
-        child_name: primaryChild.childName || "Aarav Sharma",
-        next_vaccine: primaryChild.nextVaccine || "Penta-2",
-        missed_dose_count: primaryChild.missedDoses || 1,
+      const plan = await createReminderPlan({
+        child_id: dashboardChild.id,
+        child_name: dashboardChild.childName,
+        next_vaccine: dashboardChild.nextVaccine,
+        missed_dose_count: dashboardChild.missedDoses,
         next_dose_due_date: nextDoseDueDate,
+        dropout_probability: dashboardChild.dropoutProbability,
         preferred_language: "Marathi",
       });
 
@@ -526,32 +543,24 @@ export function ParentDashboard() {
 
   return (
     <AppShell role="parent">
-      {/* Sticky Quick Jump Navigation */}
-      <div className="sticky top-16 z-20 -mx-3 px-3 py-2.5 sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 mb-6 flex items-center gap-2 sm:gap-3 overflow-x-auto shadow-xs">
-        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Jump to:</span>
-        <button type="button" onClick={() => scrollTo("parent-overview")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60 hover:bg-emerald-100 transition shrink-0">
-          1. Overview & Status
-        </button>
-        <button type="button" onClick={() => scrollTo("parent-journey")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition shrink-0">
-          2. Vaccine Journey
-        </button>
-        <button type="button" onClick={() => scrollTo("parent-reminders")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition shrink-0">
-          3. Alerts & Reminders
-        </button>
-        <button type="button" onClick={() => scrollTo("parent-registration")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition shrink-0">
-          4. Registration & Health Card
-        </button>
-      </div>
-
       <div className="min-w-0 space-y-6 sm:space-y-8 lg:space-y-10">
         {/* SECTION 1: HERO BANNER & PROTECTED STATUS */}
-        <section id="parent-overview" className="scroll-mt-28">
+        <section>
           <PageHero 
             eyebrow="Parent overview" 
-            title={`Good morning, ${parentProfile.name ? parentProfile.name.split(" ")[0] : "Parent"}! 👋`} 
+            title={`Good morning, ${data?.profile.full_name?.split(" ")[0] || "Parent"}! 👋`} 
             detail="Keep your baby healthy and protected with easy vaccine tracking." 
             image={assets.parentCare} 
           />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            {data?.demoDataPresent && <DemoDataBadge />}
+            <DashboardNotice
+              loading={loading}
+              error={error}
+              empty={!loading && !error && (data?.children.length ?? 0) === 0}
+              emptyMessage="No children are linked to this parent account yet."
+            />
+          </div>
 
           <div className="grid gap-5 lg:grid-cols-12 mt-5">
             {/* Progress Ring Hero Card */}
@@ -573,15 +582,15 @@ export function ParentDashboard() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="font-display text-3xl font-extrabold text-ink">{completionRate}%</span>
+                  <span className="font-display text-3xl font-extrabold text-ink">{loading ? "…" : error ? "—" : `${completionRate}%`}</span>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Protected</span>
                 </div>
               </div>
 
               <div className="mt-4 flex items-center gap-4 text-xs font-semibold text-slate-500">
-                <span className="flex items-center gap-1.5"><ShieldAlert className="h-4 w-4 text-amber-500" /> Risk: <strong className="text-ink">{activeRisk}</strong></span>
+                <span className="flex items-center gap-1.5"><ShieldAlert className="h-4 w-4 text-amber-500" /> Risk: <strong className="text-ink">{loading ? "…" : error ? "—" : activeRisk}</strong></span>
                 <span className="h-3 w-px bg-slate-200" />
-                <span className="flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> Active: <strong className="text-ink">2 reminders</strong></span>
+                <span className="flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> Active: <strong className="text-ink">{loading ? "…" : error ? "—" : `${livePlan?.number_of_reminders ?? storedReminderCount} reminders`}</strong></span>
               </div>
             </div>
 
@@ -591,7 +600,7 @@ export function ParentDashboard() {
                 <p className="care-kicker flex items-center gap-1.5 text-xs text-teal font-bold"><Sparkles className="h-4 w-4 text-teal" /> What's next</p>
                 <h3 className="mt-1.5 font-display text-2xl font-extrabold text-ink">{nextVaccineName} Dose</h3>
                 <p className="mt-1.5 text-sm text-slate-500 flex items-center gap-2"><Calendar className="h-4 w-4 text-teal" /> Scheduled Due Date: <strong className="text-ink">{nextDueDate}</strong></p>
-                <p className="mt-2.5 text-xs leading-relaxed text-slate-600">Your next immunisation is scheduled at Wagholi Primary Health Centre.</p>
+                <p className="mt-2.5 text-xs leading-relaxed text-slate-600">{dashboardChild?.village ? `Your next immunisation is scheduled in ${dashboardChild.village}.` : "Your vaccination schedule is based on your child's recorded doses."}</p>
               </div>
               <button onClick={() => scrollTo("parent-journey")} className="primary-button bg-[#064E3B] hover:bg-emerald-900 text-sm px-6 py-3 font-extrabold mt-4 w-full sm:w-auto self-start shadow-sm">
                 Book Next Vaccine <ArrowRight className={iconClass} />
@@ -605,26 +614,32 @@ export function ParentDashboard() {
           <SectionHeading eyebrow="Health Record" title="Complete Vaccine Journey & Timeline" detail="Clear timeline of completed, upcoming, and overdue immunisation doses." />
           
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 my-5">
-            <StatCard icon={HeartPulse} label="Total doses" value="6" description="Full protective series" tone="navy" />
-            <StatCard icon={CheckCircle2} label="Completed" value="3" description="Protected on time" tone="teal" />
-            <StatCard icon={Calendar} label="Upcoming" value="2" description="Next protection doses" tone="blue" />
-            <StatCard icon={AlertTriangle} label="Action needed" value="1" description="Tap to view reminder action" tone="amber" />
+            <StatCard icon={HeartPulse} label="Total doses" value={loading ? "…" : error ? "—" : childRecords.length} description="Recorded doses for this child" tone="navy" />
+            <StatCard icon={CheckCircle2} label="Completed" value={loading ? "…" : error ? "—" : childRecords.filter((record) => record.givenDate).length} description="Recorded as given" tone="teal" />
+            <StatCard icon={Calendar} label="Upcoming" value={loading ? "…" : error ? "—" : childRecords.filter((record) => record.status === "Pending").length} description="Due in the future" tone="blue" />
+            <StatCard icon={AlertTriangle} label="Action needed" value={loading ? "…" : error ? "—" : childRecords.filter((record) => record.status === "Overdue").length} description="Past due, not yet given" tone="amber" />
           </div>
 
-          <SimpleVaccinationTimeline rows={vaccinationRecords} />
+          <DashboardNotice
+            loading={loading}
+            error={error}
+            empty={!loading && !error && childRecords.length === 0}
+            emptyMessage="No vaccination records are available for this child."
+          />
+          {childRecords.length > 0 && <SimpleVaccinationTimeline rows={childRecords} />}
         </section>
 
         {/* SECTION 3: ACTIVE ALERTS & REMINDERS */}
-        <section id="parent-reminders" className="scroll-mt-28 surface-card min-w-0 animate-card-in border border-amber-200/80 bg-amber-50/50 p-4 sm:p-5 lg:p-8 shadow-md shadow-amber-950/5">
+        <section className="surface-card min-w-0 animate-card-in border border-amber-200/80 bg-amber-50/50 p-4 sm:p-5 lg:p-8 shadow-md shadow-amber-950/5">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-700" /><RiskBadge risk={livePlan?.risk_level ?? activeRisk} /></div>
+              <div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-700" />{loading ? <span className="text-sm">Loading risk…</span> : error ? <span className="text-sm">Risk unavailable</span> : alertRisk ? <RiskBadge risk={alertRisk} /> : <span className="text-sm">No risk prediction</span>}</div>
               <h2 className="mt-3 font-display text-2xl font-extrabold text-amber-950">{nextVaccineName} Next Vaccine Reminder</h2>
-              <p className="mt-2 text-sm text-amber-900/80 flex items-center gap-1.5"><Info className="h-4 w-4 text-amber-700" /> Automatic reminder is set for 2 days before visit.</p>
+              <p className="mt-2 text-sm text-amber-900/80 flex items-center gap-1.5"><Info className="h-4 w-4 text-amber-700" /> Reminder timing follows the current vaccination plan.</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <button type="button" onClick={createLivePlan} disabled={loadingPlan} className="primary-button text-base font-extrabold">
+              <button type="button" onClick={createLivePlan} disabled={loadingPlan || loading || Boolean(error) || !dashboardChild?.nextDueDate} className="primary-button text-base font-extrabold">
                 <Bell className={iconClass} />{loadingPlan ? "Setting up..." : "Get Reminders"}
               </button>
 
@@ -659,20 +674,23 @@ export function ParentDashboard() {
                 <p className="mt-4 text-sm text-slate-600 flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> Alert scheduled {reminder.days_before_vaccine} day(s) before via {reminder.channel}.</p>
               </article>
             )) : (
-              reminders.map((reminder) => (
+              childRecords.filter((record) => record.status !== "Completed").map((reminder) => (
                 <article key={reminder.id} className="surface-card p-5 bg-white">
-                  <div className="flex items-center justify-between"><RiskBadge risk={reminder.riskLevel} /><StatusBadge status={reminder.status} /></div>
+                  <div className="flex items-center justify-between">{activeRisk ? <RiskBadge risk={activeRisk} /> : <span className="text-xs text-slate-500">No risk prediction</span>}<StatusBadge status={reminder.status} /></div>
                   <h3 className="mt-4 font-display text-xl font-extrabold text-ink">{reminder.vaccine}</h3>
-                  <p className="mt-1 text-sm text-slate-500 flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Due {reminder.dueDate}</p>
-                  <p className="mt-4 text-sm text-slate-600 flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> {reminder.message}</p>
+                  <p className="mt-1 text-sm text-slate-500 flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Due {formatDashboardDate(reminder.dueDate)}</p>
+                  <p className="mt-4 text-sm text-slate-600 flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> {reminder.status === "Overdue" ? "This dose is past due." : "This dose is scheduled for a future date."}</p>
                 </article>
               ))
+            )}
+            {!livePlan && childRecords.every((record) => record.status === "Completed") && (
+              <p className="text-sm text-slate-500">No pending or overdue doses for this child.</p>
             )}
           </div>
         </section>
 
         {/* SECTION 4: CHILD REGISTRATION & DIGITAL CARD QR */}
-        <section id="parent-registration" className="scroll-mt-28 surface-card min-w-0 animate-card-in p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
+        <section className="surface-card min-w-0 animate-card-in p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
           <SectionHeading eyebrow="Digital Health Card" title="Child Registration & Pass" detail="Quick registration and verified QR pass for frontline ASHA check-in." />
 
           <div className="grid gap-8 lg:grid-cols-12 mt-6">
@@ -1003,92 +1021,48 @@ export function ParentReminders() {
 }
 
 export function AshaDashboard() {
+  const { data, loading, error, reload } = useDashboardData("asha");
   const [activeChild, setActiveChild] = useState<ChildRecord | null>(null);
   const [action, setAction] = useState<ActionType>("call");
-  const [areaComplete, setAreaComplete] = useState(true);
-  const [queueComplete, setQueueComplete] = useState(false);
-  const [recordComplete, setRecordComplete] = useState(false);
-  const [capacityData, setCapacityData] = useState<AshaCapacityQueueResponse | null>(null);
   const [filter, setFilter] = useState("All");
+  const metricValue = (value: number) => loading ? "…" : error ? "—" : value;
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  useEffect(() => {
-    ashaService.getCapacityQueue("ASHA-PUN-08", 15)
-      .then((res) => { if (res) setCapacityData(res); })
-      .catch((err) => console.warn("Backend queue connection note:", err));
-  }, []);
+  const urgent = (data?.children ?? [])
+    .filter((child) => child.riskLevel === "High" || child.daysOverdue > 0)
+    .slice(0, 5);
+  const filteredInterventions = (data?.interventions ?? []).filter(
+    (record) => filter === "All" || record.status.toLowerCase() === filter.toLowerCase(),
+  );
 
-  const runDailyBatchScoring = async () => {
+  const begin = (child: ChildRecord, type: ActionType) => { setAction(type); setActiveChild(child); };
+  const beginGeneric = (type: ActionType) => {
+    if (!data?.children[0]) {
+      toast.error("No child is assigned to your account yet.");
+      return;
+    }
+    setAction(type);
+    setActiveChild(data.children[0]);
+  };
+  const resolveAction = async (interventionId: string, childName: string) => {
     try {
-      toast.info("Running daily batch scoring...");
-      const res = await ashaService.triggerDailyScoring("Pune");
-      toast.success(res?.status ? `Scoring complete. ${res.high_risk_count ?? 2} high risk identified.` : "Daily batch scoring complete.");
-      const fresh = await ashaService.getCapacityQueue("ASHA-PUN-08", 15);
-      if (fresh) setCapacityData(fresh);
-    } catch {
-      toast.success("Batch daily scoring executed successfully.");
+      await resolveIntervention(interventionId);
+      toast.success(`${childName}'s intervention was resolved.`);
+      await reload();
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : "Unable to resolve the intervention.");
     }
   };
 
-  const urgent: ChildRecord[] = useMemo(() => {
-    if (capacityData?.items && capacityData.items.length > 0) {
-      return capacityData.items
-        .filter((c) => c.risk_level === "High" || c.days_overdue > 0)
-        .slice(0, 5)
-        .map((item) => ({
-          childId: item.child_id,
-          childName: item.child_name,
-          parentName: item.parent_name ?? "Parent",
-          parentEmail: item.parent_email ?? "parent@example.com",
-          village: item.village,
-          nextVaccine: item.next_vaccine,
-          nextDueDate: item.next_due_date ?? "Pending",
-          missedDoses: item.missed_doses,
-          daysOverdue: item.days_overdue,
-          dropoutProbability: item.dropout_probability,
-          riskLevel: item.risk_level,
-          priorityScore: item.priority_score,
-          risk_reasons: item.risk_reasons,
-        }));
-    }
-    return children.filter((child) => child.riskLevel === "High" || child.daysOverdue > 0).slice(0, 5);
-  }, [capacityData]);
-
-  const filteredInterventions = useMemo(() => {
-    if (filter === "All") return interventions;
-    return interventions.filter((rec: any) => rec.status === filter);
-  }, [filter]);
-
-  const completedSteps = Number(areaComplete) + Number(queueComplete) + Number(recordComplete);
-  const begin = (child: ChildRecord, type: ActionType) => { setAction(type); setActiveChild(child); };
-  const beginGeneric = (type: ActionType) => { setAction(type); setActiveChild(primaryChild); };
-
   return (
     <AppShell role="asha">
-      {/* Sticky Quick Jump Navigation */}
-      <div className="sticky top-16 z-20 -mx-3 px-3 py-2.5 sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6 bg-white/90 backdrop-blur-md border-b border-slate-200/80 mb-6 flex items-center gap-2 sm:gap-3 overflow-x-auto shadow-xs">
-        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Jump to:</span>
-        <button type="button" onClick={() => scrollTo("asha-overview")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60 hover:bg-emerald-100 transition shrink-0">
-          1. Overview & Metrics
-        </button>
-        <button type="button" onClick={() => scrollTo("asha-checklists")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition shrink-0">
-          2. Daily Checklists
-        </button>
-        <button type="button" onClick={() => scrollTo("asha-queue")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition shrink-0">
-          3. High-Risk Queue
-        </button>
-        <button type="button" onClick={() => scrollTo("asha-interventions")} className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition shrink-0">
-          4. Action & Intervention Logs
-        </button>
-      </div>
-
       <div className="min-w-0 space-y-6 sm:space-y-8 lg:space-y-10">
         {/* SECTION 1: ASHA HERO & QUICK METRICS ROW */}
-        <section id="asha-overview" className="scroll-mt-28">
+        <section>
           <PageHero 
             eyebrow="ASHA dashboard" 
             title="Your follow-up plan is ready." 
@@ -1096,66 +1070,69 @@ export function AshaDashboard() {
             image={assets.ashaCare} 
             action={
               <div className="flex flex-wrap items-center gap-2.5">
-                <button type="button" onClick={runDailyBatchScoring} className="secondary-button border-white/20 bg-white/10 text-white text-xs py-2 px-3.5 hover:bg-white/20">
-                  <Sparkles className={iconClass} />Batch scoring
-                </button>
                 <button type="button" onClick={() => scrollTo("asha-queue")} className="secondary-button border-white/20 bg-white/10 text-white text-xs py-2 px-3.5 hover:bg-white/20">
                   Review risk queue <ChevronRight className={iconClass} />
                 </button>
               </div>
             } 
           />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            {data?.demoDataPresent && <DemoDataBadge />}
+            <DashboardNotice
+              loading={loading}
+              error={error}
+              empty={!loading && !error && (data?.children.length ?? 0) === 0}
+              emptyMessage="No children are assigned to this ASHA account yet."
+            />
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5 mt-5">
-            <StatCard icon={UsersRound} label="Total children" value={capacityData ? String(capacityData.total_children) : "38"} description="In your assigned area" tone="navy" />
-            <StatCard icon={CheckCircle2} label="Vaccinated" value="26" description="Recorded this month" tone="teal" />
-            <StatCard icon={Calendar} label="Pending" value="7" description="Upcoming doses" tone="blue" />
-            <StatCard icon={AlertTriangle} label="Overdue" value="6" description="Immediate follow-up" tone="red" />
-            <StatCard icon={ShieldAlert} label="High risk" value="2" description="Home visit recommended" tone="amber" />
+            <StatCard icon={UsersRound} label="Total children" value={metricValue(data?.summary.totalChildren ?? 0)} description="Assigned to your account" tone="navy" />
+            <StatCard icon={CheckCircle2} label="Vaccinated this month" value={metricValue(data?.summary.vaccinatedThisMonth ?? 0)} description="Doses recorded this month" tone="teal" />
+            <StatCard icon={Calendar} label="Pending" value={metricValue(data?.summary.pending ?? 0)} description="Upcoming doses" tone="blue" />
+            <StatCard icon={AlertTriangle} label="Overdue" value={metricValue(data?.summary.overdue ?? 0)} description="Past due, not yet given" tone="red" />
+            <StatCard icon={ShieldAlert} label="High risk" value={metricValue(data?.summary.highRisk ?? 0)} description="Latest stored prediction" tone="amber" />
           </div>
         </section>
 
         {/* SECTION 2: ONBOARDING & DAILY CHECKLISTS */}
-        <section id="asha-checklists" className="scroll-mt-28 surface-card min-w-0 p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
+        <section className="surface-card min-w-0 p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
-            <SectionHeading eyebrow="First-time setup" title="Frontline Onboarding & Daily Checklists" detail="Complete these three core steps to begin vaccination follow-up." />
-            <span className="rounded-full bg-emerald-50 border border-emerald-200 px-3.5 py-1 text-xs font-extrabold text-emerald-800 self-start sm:self-auto">{completedSteps} of 3 complete</span>
+            <SectionHeading eyebrow="First-time setup" title="Frontline Onboarding & Daily Checklists" detail="Quick links for area setup, risk review, and vaccine recording." />
+            <span className="rounded-full bg-emerald-50 border border-emerald-200 px-3.5 py-1 text-xs font-extrabold text-emerald-800 self-start sm:self-auto">Setup checklist</span>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <article className="rounded-xl border border-teal-100 bg-teal-50/60 p-4 transition hover:shadow-sm">
               <div className="flex items-center justify-between">
                 <MapPin className="h-5 w-5 text-teal" />
-                <CheckCircle2 className={`h-5 w-5 ${areaComplete ? "text-teal" : "text-slate-300"}`} />
+                <ChevronRight className="h-5 w-5 text-slate-300" />
               </div>
               <h3 className="mt-3 font-display text-lg font-extrabold text-ink">Set up area</h3>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">Confirm Area ID, district, taluka, and village.</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link href="/asha/area-registration" className="secondary-button text-xs flex-1 py-2 px-3">Review area</Link>
-                <button onClick={() => setAreaComplete(!areaComplete)} className="secondary-button text-xs py-2 px-3">{areaComplete ? "Done" : "Mark done"}</button>
               </div>
             </article>
             <article className="rounded-xl border border-amber-100 bg-amber-50/60 p-4 transition hover:shadow-sm">
               <div className="flex items-center justify-between">
                 <ShieldAlert className="h-5 w-5 text-amber-600" />
-                <CheckCircle2 className={`h-5 w-5 ${queueComplete ? "text-teal" : "text-slate-300"}`} />
+                <ChevronRight className="h-5 w-5 text-slate-300" />
               </div>
               <h3 className="mt-3 font-display text-lg font-extrabold text-ink">Review high risk</h3>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">Open risk queue to prioritize overdue children.</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button onClick={() => { setQueueComplete(true); scrollTo("asha-queue"); }} className="secondary-button text-xs flex-1 py-2 px-3">Review queue</button>
-                <button onClick={() => setQueueComplete(!queueComplete)} className="secondary-button text-xs py-2 px-3">{queueComplete ? "Done" : "Mark done"}</button>
+                <button onClick={() => scrollTo("asha-queue")} className="secondary-button text-xs flex-1 py-2 px-3">Review queue</button>
               </div>
             </article>
             <article className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 transition hover:shadow-sm">
               <div className="flex items-center justify-between">
                 <ClipboardCheck className="h-5 w-5 text-blue-700" />
-                <CheckCircle2 className={`h-5 w-5 ${recordComplete ? "text-teal" : "text-slate-300"}`} />
+                <ChevronRight className="h-5 w-5 text-slate-300" />
               </div>
               <h3 className="mt-3 font-display text-lg font-extrabold text-ink">Record vaccine</h3>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">Find child ID and record completed dose.</p>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Link href="/asha/vaccination-entry" onClick={() => setRecordComplete(true)} className="secondary-button text-xs flex-1 py-2 px-3">Record dose</Link>
-                <button onClick={() => setRecordComplete(!recordComplete)} className="secondary-button text-xs py-2 px-3">{recordComplete ? "Done" : "Mark done"}</button>
+                <Link href="/asha/vaccination-entry" className="secondary-button text-xs flex-1 py-2 px-3">Record dose</Link>
               </div>
             </article>
           </div>
@@ -1166,7 +1143,7 @@ export function AshaDashboard() {
           <SectionHeading 
             eyebrow="Today’s Priority Queue" 
             title="High-Risk Queue & Village Capacity" 
-            detail="Sorted by risk level, overdue days, and backend ML priority score." 
+            detail="Sorted by the stored ML priority score for your assigned children."
             action={<Link href="/asha/risk-dashboard" className="secondary-button text-xs py-2 px-3.5">Review full queue</Link>} 
           />
           <div className="table-wrap mt-4">
@@ -1184,17 +1161,20 @@ export function AshaDashboard() {
                   </tr>
                 </thead>
                 <tbody>
+                  {!loading && urgent.length === 0 && (
+                    <tr><td colSpan={7} className="py-6 text-center text-slate-500">No high-risk or overdue children in your assigned queue.</td></tr>
+                  )}
                   {urgent.map((child) => (
                     <tr key={child.childId}>
                       <td>
                         <p className="font-bold text-ink">{child.childName}</p>
-                        <p className="text-xs text-slate-400">{child.childId} · {child.village || "Wagholi"}</p>
+                        <p className="text-xs text-slate-400">{child.childId} · {child.village || "—"}</p>
                       </td>
                       <td>
                         {child.nextVaccine}
                         <p className="text-xs text-slate-400">{child.nextDueDate}</p>
                       </td>
-                      <td><RiskBadge risk={child.riskLevel} /></td>
+                      <td><RiskBadge risk={child.riskLevel ?? "Normal"} /></td>
                       <td>
                         {child.daysOverdue ? (
                           <span className="font-bold text-red-700">{child.daysOverdue} days</span>
@@ -1207,11 +1187,12 @@ export function AshaDashboard() {
                       </td>
                       <td>
                         <div className="flex flex-wrap gap-1">
-                          {(child.risk_reasons || ["3 consecutive delayed doses", "High dropout probability"]).slice(0, 2).map((reason: string, idx: number) => (
+                          {child.risk_reasons.slice(0, 2).map((reason: string, idx: number) => (
                             <span key={idx} className="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 ring-1 ring-inset ring-red-600/10">
                               {reason}
                             </span>
                           ))}
+                          {child.risk_reasons.length === 0 && <span className="text-xs text-slate-500">No risk reasons returned by the prediction.</span>}
                         </div>
                       </td>
                       <td>
@@ -1237,17 +1218,17 @@ export function AshaDashboard() {
         </section>
 
         {/* SECTION 4: ACTION & INTERVENTION LOGS */}
-        <section id="asha-interventions" className="scroll-mt-28 surface-card min-w-0 p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
+        <section className="surface-card min-w-0 p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
           <SectionHeading 
             eyebrow="Frontline Operations" 
             title="Action & Intervention Logs" 
-            detail="Record and manage email reminders, home visits, and follow-ups." 
+            detail="Record and manage calls, reminders, home visits, and follow-ups." 
           />
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 my-5">
             {[
               { type: "call", label: "Call parent", icon: Phone },
-              { type: "reminder", label: "Send reminder", icon: Send },
+              { type: "reminder", label: "Record reminder", icon: Send },
               { type: "visit", label: "Home visit", icon: Home },
               { type: "followup", label: "Schedule follow-up", icon: CalendarClock },
             ].map(({ type, label, icon: Icon }) => (
@@ -1287,20 +1268,27 @@ export function AshaDashboard() {
                   </tr>
                 </thead>
                 <tbody>
+                  {!loading && filteredInterventions.length === 0 && (
+                    <tr><td colSpan={6} className="py-6 text-center text-slate-500">No intervention records match this filter.</td></tr>
+                  )}
                   {filteredInterventions.map((record) => (
                     <tr key={record.id}>
                       <td>
                         <p className="font-bold text-ink">{record.childName}</p>
                         <p className="text-xs text-slate-400">{record.childId}</p>
                       </td>
-                      <td className="capitalize">{record.type}</td>
-                      <td>{record.date}</td>
+                      <td className="capitalize">{record.type.replace("_", " ")}</td>
+                      <td>{new Date(record.date).toLocaleDateString()}</td>
                       <td className="max-w-80">{record.note}</td>
                       <td><StatusBadge status={record.status} /></td>
                       <td>
-                        <button onClick={() => toast.success(`${record.childName}'s intervention marked as resolved.`)} className="secondary-button min-h-8 px-3 py-1 text-xs">
-                          Resolve
-                        </button>
+                        {record.status.toLowerCase() === "resolved" ? (
+                          <span className="text-xs text-slate-400">Resolved</span>
+                        ) : (
+                          <button onClick={() => void resolveAction(record.id, record.childName)} className="secondary-button min-h-8 px-3 py-1 text-xs">
+                            Resolve
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1311,7 +1299,7 @@ export function AshaDashboard() {
         </section>
       </div>
 
-      {activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} />}
+      {activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} onSaved={reload} />}
     </AppShell>
   );
 }
@@ -1471,78 +1459,6 @@ export function AshaVaccinationHistory() {
     </AppShell>
   );
 }
-
-export function AshaRiskDashboard() {
-  const [risk, setRisk] = useState<"All" | RiskLevel>("All");
-  const [query, setQuery] = useState("");
-  const [activeChild, setActiveChild] = useState<ChildRecord | null>(null);
-  const [action, setAction] = useState<ActionType>("reminder");
-  const [capacityData, setCapacityData] = useState<AshaCapacityQueueResponse | null>(null);
-
-  useEffect(() => {
-    ashaService.getCapacityQueue("ASHA-PUN-08", 15)
-      .then((res) => { if (res) setCapacityData(res); })
-      .catch((err) => console.warn("Backend risk queue note:", err));
-  }, []);
-
-  const triggerBatch = async () => {
-    try {
-      toast.info("Executing daily scoring backend batch...");
-      const res = await ashaService.triggerDailyScoring("Pune");
-      toast.success(res?.status ? `Daily scoring batch completed. Total scored: ${res.total_scored ?? 38}.` : "Daily scoring batch updated.");
-      const fresh = await ashaService.getCapacityQueue("ASHA-PUN-08", 15);
-      if (fresh) setCapacityData(fresh);
-    } catch {
-      toast.success("Daily scoring batch completed.");
-    }
-  };
-
-  const list: ChildRecord[] = useMemo(() => {
-    if (capacityData?.items && capacityData.items.length > 0) {
-      return capacityData.items.map((item) => ({
-        childId: item.child_id,
-        childName: item.child_name,
-        parentName: item.parent_name ?? "Parent",
-        parentEmail: item.parent_email ?? "parent@example.com",
-        village: item.village,
-        lastVaccine: "Penta-1",
-        nextVaccine: item.next_vaccine,
-        nextDueDate: item.next_due_date ?? "29 Sep 2026",
-        missedDoses: item.missed_doses,
-        daysOverdue: item.days_overdue,
-        dropoutProbability: item.dropout_probability,
-        riskLevel: item.risk_level,
-        priorityScore: item.priority_score,
-        risk_reasons: item.risk_reasons,
-      }));
-    }
-    return children;
-  }, [capacityData]);
-
-  const rows = useMemo(() => list.filter((child) => (risk === "All" || child.riskLevel === risk) && `${child.childName} ${child.childId} ${child.village || ""}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => b.priorityScore - a.priorityScore), [list, risk, query]);
-  const begin = (child: ChildRecord, type: ActionType) => { setAction(type); setActiveChild(child); };
-
-  const villageGroups = capacityData?.villages && capacityData.villages.length > 0
-    ? capacityData.villages
-    : [
-        { village: "Wagholi", capacity_allocated: 8, total_children: 12, children: [] },
-        { village: "Sakuri", capacity_allocated: 5, total_children: 8, children: [] },
-        { village: "Akluj", capacity_allocated: 2, total_children: 4, children: [] },
-      ];
-
-  return <AppShell role="asha"><PageHero eyebrow="Risk dashboard" title="Decide which household to visit first" detail="Priority scores combine missed doses, overdue days, and backend ML risk API predictions. Village grouping respects ASHA daily capacity limits." image={assets.ashaCare} action={<div className="flex items-center gap-3"><button onClick={triggerBatch} className="secondary-button border-white/20 bg-white/10 text-white"><Sparkles className={iconClass} />Run Daily Batch Scoring</button><div className="rounded-xl bg-white/10 px-4 py-3 text-right"><p className="text-[10px] font-bold uppercase tracking-widest text-teal-200">High risk today</p><p className="font-display text-2xl font-extrabold">{rows.filter((r) => r.riskLevel === "High").length || 2} children</p></div></div>} />
-    <section className="mb-7 surface-card p-6"><SectionHeading eyebrow="Capacity Queue" title="Village-level ASHA Workload & Capacity Limits" detail={`Daily capacity limit: ${capacityData?.daily_capacity ?? 15} children/day. Organised by village workload.`} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{villageGroups.map((v) => <div key={v.village} className="rounded-2xl border border-teal-100 bg-teal-50/50 p-4"><div className="flex items-center justify-between"><span className="font-bold text-ink">{v.village}</span><span className="rounded-full bg-teal-700 px-2.5 py-0.5 text-xs font-bold text-white">{v.capacity_allocated} / {capacityData?.daily_capacity ?? 15} cap</span></div><p className="mt-2 text-xs text-slate-500">{v.total_children ?? 5} flagged children allocated to daily queue</p></div>)}</div></section>
-    <section className="surface-card p-6"><div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><SectionHeading title="Ranked care queue" detail="Use an action to call, remind, visit, or schedule follow-up." /><div className="flex flex-wrap gap-2"><div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} className="field-control w-56 pl-9" placeholder="Search child or village" /></div>{(["All", "High", "Medium", "Low"] as const).map((item) => <button key={item} onClick={() => setRisk(item)} className={risk === item ? "primary-button" : "secondary-button"}>{item}</button>)}</div></div><div className="mt-5 table-wrap"><div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Child / Village</th><th>Last / next vaccine</th><th>Missed</th><th>Overdue</th><th>ML probability</th><th>Risk</th><th>Priority</th><th>Explainable Risk Reasons</th><th>Action</th></tr></thead><tbody>{rows.map((child) => <tr key={child.childId} className={child.riskLevel === "High" ? "bg-red-50/40" : ""}><td><p className="font-bold text-ink">{child.childName}</p><p className="text-xs text-slate-400">{child.childId} · <strong>{child.village || "Wagholi"}</strong></p></td><td><p>{child.lastVaccine} → <strong className="text-ink">{child.nextVaccine}</strong></p><p className="text-xs text-slate-400">Due {child.nextDueDate}</p></td><td className="font-bold text-ink">{child.missedDoses}</td><td>{child.daysOverdue ? <span className="font-bold text-red-700">{child.daysOverdue} days</span> : "—"}</td><td className="font-bold text-ink">{Math.round(child.dropoutProbability * 100)}%</td><td><RiskBadge risk={child.riskLevel} /></td><td><span className="font-display text-lg font-extrabold text-ink">{child.priorityScore.toFixed(1)}</span></td><td><div className="flex flex-col gap-1 max-w-xs">{(child.risk_reasons || ["3 consecutive delayed doses", "High local dropout rate", "Next dose overdue"]).slice(0, 3).map((reason: string, idx: number) => <span key={idx} className="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 ring-1 ring-inset ring-red-600/10">{reason}</span>)}</div></td><td><div className="flex gap-2"><button onClick={() => begin(child, "call")} className="secondary-button min-h-9 px-3 py-1.5"><Phone className={iconClass} /></button><button onClick={() => begin(child, child.riskLevel === "High" ? "reminder" : "visit")} className={child.riskLevel === "High" ? "danger-button min-h-9 px-3 py-1.5" : "primary-button min-h-9 px-3 py-1.5"}>{child.riskLevel === "High" ? "Send reminder" : "Take action"}</button></div></td></tr>)}</tbody></table></div></div></section>
-    <section className="mt-7 surface-card p-6"><SectionHeading eyebrow="Home visit priority queue" title="Field actions to complete" detail="High risk is an immediate visual signal with top 2-3 risk reasons displayed." /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{rows.filter((child) => child.riskLevel !== "Normal").slice(0, 6).map((child) => <article key={child.childId} className={`rounded-2xl border-l-4 bg-slate-50 p-4 ${child.riskLevel === "High" ? "border-red-500" : child.riskLevel === "Medium" ? "border-amber-400" : "border-teal"}`}><div className="flex items-center justify-between"><p className="font-bold text-ink">{child.childName} ({child.village || "Wagholi"})</p><RiskBadge risk={child.riskLevel} /></div><p className="mt-2 text-sm text-slate-500">{child.missedDoses} missed doses · {child.daysOverdue ? `${child.daysOverdue} days overdue` : "upcoming follow-up"}</p><div className="mt-3 flex flex-wrap gap-1">{(child.risk_reasons || ["Delayed doses", "High dropout risk"]).slice(0, 3).map((r: string, idx: number) => <span key={idx} className="inline-flex items-center rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 border border-slate-200">{r}</span>)}</div><button onClick={() => begin(child, "visit")} className={child.riskLevel === "High" ? "danger-button mt-4 w-full" : "secondary-button mt-4 w-full"}>{child.riskLevel === "High" ? <AlertTriangle className={iconClass} /> : <Home className={iconClass} />}{child.riskLevel === "High" ? "Arrange home visit" : "View action"}</button></article>)}</div></section>{activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} />}</AppShell>;
-}
-
-export function AshaInterventions() { const [activeChild, setActiveChild] = useState<ChildRecord | null>(null); const [action, setAction] = useState<ActionType>("call"); const [filter, setFilter] = useState("All"); const filtered = interventions.filter((item) => filter === "All" || item.status === filter); const begin = (type: ActionType) => { setAction(type); setActiveChild(children[1]); };
-  return <AppShell role="asha"><PageHero eyebrow="Interventions" title="Turn priorities into completed care" detail="Every action is captured as a clear, future API-ready intervention record." image={assets.ashaCare} /><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{([{ type: "call", label: "Call parent", icon: Phone }, { type: "reminder", label: "Send reminder", icon: Send }, { type: "visit", label: "Home visit", icon: Home }, { type: "followup", label: "Schedule follow-up", icon: CalendarClock }]).map(({ type, label, icon: Icon }) => <button key={type} onClick={() => begin(type as ActionType)} className="card-lift surface-card flex items-center gap-4 p-5 text-left transition hover:border-teal"><span className="grid h-11 w-11 place-items-center rounded-xl bg-teal-50 text-teal"><Icon className="h-5 w-5" /></span><span><span className="block font-display text-lg font-extrabold text-ink">{label}</span><span className="mt-1 block text-xs text-slate-500">Record a frontline action</span></span></button>)}</div><section className="mt-7 surface-card p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><SectionHeading title="Intervention history" detail="Calls, reminders, visits, and follow-ups for the area." /><select value={filter} onChange={(event) => setFilter(event.target.value)} className="field-control max-w-44"><option>All</option><option>Scheduled</option><option>Completed</option><option>Resolved</option></select></div><div className="table-wrap"><div className="overflow-x-auto"><table className="data-table"><thead><tr><th>Child</th><th>Intervention</th><th>Date</th><th>Note</th><th>Status</th><th>Resolve</th></tr></thead><tbody>{filtered.map((record) => <tr key={record.id}><td><p className="font-bold text-ink">{record.childName}</p><p className="text-xs text-slate-400">{record.childId}</p></td><td>{record.type}</td><td>{record.date}</td><td className="max-w-80">{record.note}</td><td><StatusBadge status={record.status} /></td><td><button onClick={() => toast.success(`${record.childName}'s intervention marked as resolved.`)} className="secondary-button min-h-9 px-3 py-1.5">Resolve</button></td></tr>)}</tbody></table></div></div></section>{activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} />}</AppShell>; }
-
-export function AshaAnalytics() { const riskData = [{ label: "High", value: 2, fill: "#dc2626" }, { label: "Medium", value: 5, fill: "#f59e0b" }, { label: "Low", value: 7, fill: "#0f766e" }, { label: "Normal", value: 24, fill: "#94a3b8" }]; return <AppShell role="asha"><PageHero eyebrow="Area analytics" title="Understand your area’s vaccination rhythm" detail={`${ashaProfile.area.name} · ${ashaProfile.area.district}. Trends and performance summaries prepared for future live data.`} image={assets.ashaCare} /><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"><StatCard icon={UsersRound} label="Total children" value="38" description="Assigned in the area" tone="navy" /><StatCard icon={CheckCircle2} label="Vaccinated" value="26" description="68% coverage" tone="teal" /><StatCard icon={AlertTriangle} label="Missed" value="5" description="Needs follow-up" tone="amber" /><StatCard icon={ShieldAlert} label="Overdue" value="6" description="Immediate action" tone="red" /><StatCard icon={ClipboardCheck} label="Resolved" value="34" description="Successful interventions" tone="blue" /></div><div className="mt-7 grid gap-6 xl:grid-cols-2"><ChartCard title="Vaccination coverage" detail="Completed vs pending, missed, and overdue."><ResponsiveContainer width="100%" height={270}><PieChart><Pie data={coverageData} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius={62} outerRadius={90} paddingAngle={4}>{coverageData.map((item) => <Cell key={item.label} fill={item.fill} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer><ChartLegend data={coverageData} /></ChartCard><ChartCard title="Risk distribution" detail="The frontline follow-up mix in this area."><ResponsiveContainer width="100%" height={270}><BarChart data={riskData}><CartesianGrid vertical={false} stroke="#e5edf0" /><XAxis dataKey="label" tickLine={false} axisLine={false} /><YAxis allowDecimals={false} tickLine={false} axisLine={false} /><Tooltip /><Bar dataKey="value" radius={[7,7,0,0]}>{riskData.map((item) => <Cell key={item.label} fill={item.fill} />)}</Bar></BarChart></ResponsiveContainer></ChartCard><ChartCard title="Vaccination trend" detail="Vaccinations and frontline follow-ups by month."><ResponsiveContainer width="100%" height={270}><AreaChart data={trendData}><defs><linearGradient id="vaccinations" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0f766e" stopOpacity=".25" /><stop offset="100%" stopColor="#0f766e" stopOpacity="0" /></linearGradient></defs><CartesianGrid vertical={false} stroke="#e5edf0" /><XAxis dataKey="month" tickLine={false} axisLine={false} /><YAxis tickLine={false} axisLine={false} /><Tooltip /><Area type="monotone" dataKey="vaccinations" stroke="#0f766e" fill="url(#vaccinations)" strokeWidth={3} /></AreaChart></ResponsiveContainer></ChartCard><ChartCard title="Intervention performance" detail="Calls, reminders, field visits, follow-ups, and resolved work."><ResponsiveContainer width="100%" height={270}><BarChart data={interventionData} layout="vertical"><CartesianGrid horizontal={false} stroke="#e5edf0" /><XAxis type="number" hide /><YAxis type="category" dataKey="label" width={80} tickLine={false} axisLine={false} /><Tooltip /><Bar dataKey="value" fill="#12324a" radius={[0,7,7,0]} /></BarChart></ResponsiveContainer></ChartCard></div></AppShell>; }
-
-function ChartCard({ title, detail, children }: { title: string; detail: string; children: React.ReactNode }) { return <section className="surface-card p-6"><h2 className="font-display text-xl font-extrabold text-ink">{title}</h2><p className="mt-1 text-sm text-slate-500">{detail}</p><div className="mt-4">{children}</div></section>; }
-function ChartLegend({ data }: { data: { label: string; value: number; fill: string }[] }) { return <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-600">{data.map((item) => <span key={item.label} className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full" style={{ background: item.fill }} />{item.label} <strong>{item.value}</strong></span>)}</div>; }
 
 export function AshaProfile() { return <AppShell role="asha"><PageHero eyebrow="ASHA profile" title="Your frontline care identity" detail="The location and service information associated with your account and assigned child records." image={assets.ashaCare} /><div className="grid gap-6 xl:grid-cols-[.75fr_1.25fr]"><section className="surface-card p-6"><div className="grid h-20 w-20 place-items-center rounded-3xl bg-teal text-2xl font-black text-white">SP</div><h2 className="mt-5 font-display text-2xl font-extrabold text-ink">{ashaProfile.name}</h2><p className="mt-1 text-sm text-slate-500">{ashaProfile.ashaId} · Email verified</p><div className="mt-6 rounded-2xl bg-teal-50 p-4 text-sm"><p className="font-bold text-teal">{ashaProfile.area.name}</p><p className="mt-1 text-teal/70">{ashaProfile.area.areaId}</p></div></section><section className="surface-card p-6"><SectionHeading title="Account and area information" detail="These fields will be sourced from the ASHA and Area APIs when the backend connects." /><div className="grid gap-x-10 gap-y-5 md:grid-cols-2"><InfoBlock label="ASHA Worker ID" value={ashaProfile.ashaId} edit={false} /><InfoBlock label="Email address" value={ashaProfile.email} edit={false} /><InfoBlock label="Area ID" value={ashaProfile.area.areaId} edit={false} /><InfoBlock label="District" value={ashaProfile.area.district} edit={false} /><InfoBlock label="Taluka" value={ashaProfile.area.taluka} edit={false} /><InfoBlock label="Village" value={ashaProfile.area.village} edit={false} /></div><div className="mt-8 grid gap-3 sm:grid-cols-4"><SmallMetric label="Assigned children" value={ashaProfile.children} /><SmallMetric label="Vaccinations" value={ashaProfile.vaccinations} /><SmallMetric label="Home visits" value={ashaProfile.visits} /><SmallMetric label="Interventions" value={ashaProfile.interventions} /></div></section></div></AppShell>; }
 function SmallMetric({ label, value }: { label: string; value: number }) { return <div className="rounded-xl bg-slate-50 p-4"><p className="font-display text-2xl font-extrabold text-ink">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{label}</p></div>; }

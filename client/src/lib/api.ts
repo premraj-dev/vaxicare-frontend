@@ -5,14 +5,9 @@ export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || "https://vaxicare-ml-api.onrender.com"
 ).replace(/\/+$/, "");
 export const AUTH_API_BASE_URL = (
-  import.meta.env.VITE_AUTH_API_BASE_URL !== undefined
-    ? import.meta.env.VITE_AUTH_API_BASE_URL
-    : import.meta.env.DEV
-      ? ""
-      : API_BASE_URL
+  import.meta.env.VITE_AUTH_API_BASE_URL || API_BASE_URL
 ).replace(/\/+$/, "");
 
-export const API_KEY = import.meta.env.VITE_API_KEY || "vaxicare-secret-key";
 
 export type RiskLevel = "Normal" | "Low" | "Medium" | "High";
 
@@ -33,9 +28,13 @@ export type AuthLoginRequest = {
 
 export type AuthLoginResponse = {
   access_token: string;
-  user?: Record<string, unknown>;
-  user_profile?: Record<string, unknown>;
-  profile?: Record<string, unknown>;
+  refresh_token: string;
+  user_profile: {
+    id: string;
+    email: string | null;
+    full_name: string;
+    role: "parent" | "asha";
+  };
 };
 
 export type PredictionRequest = {
@@ -82,6 +81,7 @@ export type ReminderPlanRequest = {
   child_name?: string;
   next_vaccine: string;
   missed_dose_count: number;
+  dropout_probability?: number;
   next_dose_due_date: string;
   preferred_language?: "Marathi" | "Hindi" | "English";
 };
@@ -166,8 +166,6 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const authHeaders: Record<string, string> = {
     "Content-Type": "application/json",
-    "X-API-Key": API_KEY,
-    "Authorization": `Bearer ${API_KEY}`,
   };
 
   let targetUrl: string;
@@ -181,12 +179,21 @@ export async function apiRequest<T>(
     targetUrl = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
   }
 
+  const headers: Record<string, string> = { ...authHeaders };
+  new Headers(options.headers).forEach((value, key) => {
+    headers[key] = value;
+  });
+  const accessToken =
+    typeof window !== "undefined" && !path.startsWith("/api/auth/")
+      ? window.localStorage.getItem("access_token")
+      : null;
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
   const response = await fetch(targetUrl, {
     ...options,
-    headers: {
-      ...authHeaders,
-      ...options.headers,
-    },
+    headers,
   });
 
   const contentType = response.headers.get("content-type") || "";
@@ -207,7 +214,7 @@ export async function apiRequest<T>(
 }
 
 export function sendEmailOtp(payload: EmailOtpRequest) {
-  return apiRequest<{ sent: boolean; code?: string; note?: string }>("/api/auth/otp/send", {
+  return apiRequest<{ sent: boolean }>("/api/auth/otp/send", {
     method: "POST",
     body: JSON.stringify(payload),
   }, AUTH_API_BASE_URL);
@@ -218,6 +225,31 @@ export function loginWithEmailOtp(payload: AuthLoginRequest) {
     method: "POST",
     body: JSON.stringify(payload),
   }, AUTH_API_BASE_URL);
+}
+
+export function getAshaDashboard() {
+  return apiRequest<import("@/types").DashboardResponse>("/api/dashboard/asha");
+}
+
+export function getParentDashboard() {
+  return apiRequest<import("@/types").DashboardResponse>("/api/dashboard/parent");
+}
+
+export function createIntervention(payload: {
+  child_id: string;
+  type: "call" | "reminder" | "home_visit" | "followup";
+  note: string;
+}) {
+  return apiRequest("/api/dashboard/interventions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resolveIntervention(interventionId: string) {
+  return apiRequest(`/api/dashboard/interventions/${encodeURIComponent(interventionId)}/resolve`, {
+    method: "PATCH",
+  });
 }
 
 export function checkBackendHealth() {
