@@ -1,13 +1,15 @@
-// Shared VaxiCare FastAPI client.
+﻿﻿// Shared VaxiCare FastAPI client.
 // Page components and services use this file instead of hard-coding backend URLs.
 
+import type { DashboardResponse as AppDashboardResponse } from "@/types";
+import { getSupabaseClient } from "@/lib/supabase";
+
 export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || "https://vaxicare-ml-api.onrender.com"
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"
 ).replace(/\/+$/, "");
 export const AUTH_API_BASE_URL = (
   import.meta.env.VITE_AUTH_API_BASE_URL || API_BASE_URL
 ).replace(/\/+$/, "");
-
 
 export type RiskLevel = "Normal" | "Low" | "Medium" | "High";
 
@@ -17,24 +19,8 @@ export type BackendHealth = {
   version?: string;
 };
 
-export type EmailOtpRequest = {
-  email: string;
-};
-
-export type AuthLoginRequest = {
-  email: string;
-  otp: string;
-};
-
-export type AuthLoginResponse = {
-  access_token: string;
-  refresh_token: string;
-  user_profile: {
-    id: string;
-    email: string | null;
-    full_name: string;
-    role: "parent" | "asha";
-  };
+export type SendRegistrationEmailResponse = {
+  sent: boolean;
 };
 
 export type PredictionRequest = {
@@ -159,6 +145,127 @@ export class ApiError extends Error {
   }
 }
 
+export type NewbornInput = {
+  name: string;
+  date_of_birth: string;
+  gender?: "Female" | "Male";
+};
+
+export type RegisteredNewborn = {
+  id: string;
+  parent_id: string;
+  name: string;
+  date_of_birth: string;
+  gender: "Female" | "Male" | null;
+  created_at: string;
+};
+
+export type Child = RegisteredNewborn;
+
+export type Vaccine = {
+  id: string;
+  name: string;
+  recommended_age_days: number;
+  description: string | null;
+};
+
+export type ImmunizationRecord = {
+  id: string;
+  child_id: string;
+  vaccine_id: string;
+  status: "pending" | "completed";
+  administered_by: string | null;
+  administered_date: string | null;
+};
+
+export async function registerNewborn(
+  childData: NewbornInput,
+): Promise<RegisteredNewborn> {
+  const supabase = getSupabaseClient();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  const user = authData.user;
+  if (!user) throw new Error("Sign in as a parent before registering a child.");
+
+  const payload = {
+    parent_id: user.id,
+    name: childData.name.trim(),
+    date_of_birth: childData.date_of_birth,
+    gender: childData.gender ?? null,
+  };
+
+  const { data, error } = await supabase
+    .from("children")
+    .insert(payload)
+    .select("id, parent_id, name, date_of_birth, gender, created_at")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getChildren(signal?: AbortSignal): Promise<Child[]> {
+  console.log("Starting Supabase fetch...");
+  const { data, error } = await getSupabaseClient()
+    .from("children")
+    .select("id, parent_id, name, date_of_birth, gender, created_at")
+    .order("created_at", { ascending: false })
+    .abortSignal(signal ?? new AbortController().signal);
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getVaccines(signal?: AbortSignal): Promise<Vaccine[]> {
+  const { data, error } = await getSupabaseClient()
+    .from("vaccines")
+    .select("id, name, recommended_age_days, description")
+    .order("recommended_age_days")
+    .abortSignal(signal ?? new AbortController().signal);
+
+  if (error) throw error;
+  return data;
+}
+
+export async function getImmunizationRecords(
+  childId: string,
+  signal?: AbortSignal,
+): Promise<ImmunizationRecord[]> {
+  console.log("Starting Supabase fetch...");
+  const { data, error } = await getSupabaseClient()
+    .from("immunization_records")
+    .select("id, child_id, vaccine_id, status, administered_by, administered_date")
+    .eq("child_id", childId)
+    .abortSignal(signal ?? new AbortController().signal);
+
+  if (error) throw error;
+  return data;
+}
+
+export async function completeImmunizationRecord(
+  recordId: string,
+  administeredDate = new Date().toISOString().slice(0, 10),
+): Promise<ImmunizationRecord> {
+  const supabase = getSupabaseClient();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!authData.user) throw new Error("Sign in as an ASHA worker to record vaccination.");
+
+  const { data, error } = await supabase
+    .from("immunization_records")
+    .update({
+      status: "completed",
+      administered_by: authData.user.id,
+      administered_date: administeredDate,
+    })
+    .eq("id", recordId)
+    .select("id, child_id, vaccine_id, status, administered_by, administered_date")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
@@ -183,10 +290,12 @@ export async function apiRequest<T>(
   new Headers(options.headers).forEach((value, key) => {
     headers[key] = value;
   });
+
   const accessToken =
     typeof window !== "undefined" && !path.startsWith("/api/auth/")
       ? window.localStorage.getItem("access_token")
       : null;
+
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -194,100 +303,98 @@ export async function apiRequest<T>(
   const response = await fetch(targetUrl, {
     ...options,
     headers,
+    credentials: "include",
   });
-
-  const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
 
   if (!response.ok) {
-    const message =
-      typeof data === "object" && data && "detail" in data
-        ? String(data.detail)
-        : `API request failed with status ${response.status}`;
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
 
-    throw new ApiError(message, response.status, data);
+    throw new ApiError(
+      `Request failed with status ${response.status}`,
+      response.status,
+      details,
+    );
   }
 
-  return data as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
 }
 
-export function sendEmailOtp(payload: EmailOtpRequest) {
-  return apiRequest<{ sent: boolean }>("/api/auth/otp/send", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }, AUTH_API_BASE_URL);
-}
-
-export function loginWithEmailOtp(payload: AuthLoginRequest) {
-  return apiRequest<AuthLoginResponse>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }, AUTH_API_BASE_URL);
-}
-
-export function getAshaDashboard() {
-  return apiRequest<import("@/types").DashboardResponse>("/api/dashboard/asha");
-}
-
-export function getParentDashboard() {
-  return apiRequest<import("@/types").DashboardResponse>("/api/dashboard/parent");
-}
-
-export function createIntervention(payload: {
-  child_id: string;
-  type: "call" | "reminder" | "home_visit" | "followup";
-  note: string;
-}) {
-  return apiRequest("/api/dashboard/interventions", {
+export async function sendRegistrationEmail(
+  payload: { email: string },
+): Promise<SendRegistrationEmailResponse> {
+  return apiRequest<SendRegistrationEmailResponse>("/api/send-email", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export function resolveIntervention(interventionId: string) {
-  return apiRequest(`/api/dashboard/interventions/${encodeURIComponent(interventionId)}/resolve`, {
-    method: "PATCH",
-  });
-}
-
-export function checkBackendHealth() {
-  return apiRequest<BackendHealth>("/health");
-}
-
-export function predictDropoutRisk(payload: PredictionRequest) {
-  return apiRequest<PredictionResponse>("/api/v1/predict", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function createReminderPlan(payload: ReminderPlanRequest) {
+export async function createReminderPlan(payload: ReminderPlanRequest): Promise<ReminderPlanResponse> {
   return apiRequest<ReminderPlanResponse>("/api/v1/reminder-plan", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export function getAshaCapacityQueue(ashaId = "ASHA-PUN-08", dailyCapacity = 15) {
-  return apiRequest<AshaCapacityQueueResponse>(
-    `/api/v1/asha/capacity-queue?asha_id=${encodeURIComponent(ashaId)}&daily_capacity=${dailyCapacity}`,
-    {
-      method: "GET",
-    },
-  ).catch(async () => {
-    // Fallback to POST if GET is unsupported by backend routing
-    return apiRequest<AshaCapacityQueueResponse>("/api/v1/asha/capacity-queue", {
-      method: "POST",
-      body: JSON.stringify({ asha_id: ashaId, daily_capacity: dailyCapacity }),
-    });
+export async function predictDropoutRisk(payload: PredictionRequest): Promise<PredictionResponse> {
+  return apiRequest<PredictionResponse>("/api/v1/predict", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 
-export function triggerBatchDailyScoring(district = "Pune") {
-  return apiRequest<DailyScoringResponse>("/api/v1/batch/daily-scoring", {
+export async function getParentDashboard(signal?: AbortSignal): Promise<DashboardResponse> {
+  return apiRequest<DashboardResponse>("/api/dashboard/parent", { signal });
+}
+
+export async function getAshaDashboard(signal?: AbortSignal): Promise<DashboardResponse> {
+  return apiRequest<DashboardResponse>("/api/dashboard/asha", { signal });
+}
+
+export type InterventionRequest = {
+  child_id: string;
+  type: "call" | "reminder" | "home_visit" | "followup";
+  note: string;
+};
+
+export async function createIntervention(
+  payload: InterventionRequest,
+): Promise<{ id?: string; child_id?: string; status?: string }> {
+  return apiRequest<{ id?: string; child_id?: string; status?: string }>("/api/dashboard/interventions", {
     method: "POST",
-    body: JSON.stringify({ district }),
+    body: JSON.stringify(payload),
   });
+}
+
+export async function resolveIntervention(
+  interventionId: string,
+): Promise<{ id?: string; status?: string; resolved_at?: string | null }> {
+  return apiRequest<{ id?: string; status?: string; resolved_at?: string | null }>(
+    `/api/dashboard/interventions/${interventionId}/resolve`,
+    { method: "PATCH" },
+  );
+}
+
+export type DashboardResponse = AppDashboardResponse;
+
+export async function getAshaCapacityQueue(ashaId?: string, dailyCapacity = 5): Promise<AshaCapacityQueueResponse> {
+  const params = new URLSearchParams();
+  if (ashaId) params.set("asha_id", ashaId);
+  params.set("daily_capacity", String(dailyCapacity));
+  return apiRequest<AshaCapacityQueueResponse>(`/api/v1/asha/capacity-queue?${params.toString()}`);
+}
+
+export async function triggerBatchDailyScoring(
+  district?: string,
+): Promise<{ status?: string; total_scored?: number; evaluated_children?: number; high_risk_flagged?: number; reminders_triggered?: number }> {
+  const params = district ? `?district=${encodeURIComponent(district)}` : "";
+  return apiRequest<{ status?: string; total_scored?: number; evaluated_children?: number; high_risk_flagged?: number; reminders_triggered?: number }>(`/api/v1/batch/daily-scoring${params}`);
 }

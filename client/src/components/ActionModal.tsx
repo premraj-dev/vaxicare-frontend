@@ -1,12 +1,9 @@
 /** Verified Care Console: focused intervention confirmation modal for frontline worker actions. */
 
-import { useState } from "react";
 import { Phone, Send, Home, CalendarClock, X } from "lucide-react";
 import { toast } from "sonner";
-import { createIntervention } from "@/lib/api";
 import type { ChildRecord } from "@/types";
 import { RiskBadge } from "@/components/Ui";
-import { DatePicker } from "@/components/DatePicker";
 
 export type ActionType = "call" | "reminder" | "visit" | "followup";
 
@@ -18,34 +15,13 @@ const labels = {
 };
 
 export function ActionModal({ child, type, onClose, onSaved }: { child: ChildRecord; type: ActionType; onClose: () => void; onSaved?: () => void | Promise<void> }) {
-  const [saving, setSaving] = useState(false);
-  const [actionDate, setActionDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [note, setNote] = useState("");
+  const actionDate = new Date().toISOString().slice(0, 10);
   const config = labels[type];
   const Icon = config.icon;
-  const submit = async () => {
-    setSaving(true);
-    try {
-      const childId = child.id ?? child.childId;
-      if (typeof childId !== "string" || !childId) {
-        throw new Error("This child record has no database id.");
-      }
-      const actionNote = [note.trim(), type === "visit" || type === "followup" ? `Scheduled date: ${actionDate}` : ""]
-        .filter(Boolean)
-        .join(" · ");
-      await createIntervention({
-        child_id: childId,
-        type: type === "visit" ? "home_visit" : type,
-        note: actionNote,
-      });
-      toast.success("Action recorded in Supabase.");
-      await onSaved?.();
-      onClose();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to record this action.");
-    } finally {
-      setSaving(false);
-    }
+  const submit = () => {
+    toast.success("Sample action recorded locally; it was not sent to the server.");
+    void onSaved?.();
+    onClose();
   };
 
   return (
@@ -83,26 +59,14 @@ export function ActionModal({ child, type, onClose, onSaved }: { child: ChildRec
             <RiskBadge risk={child.riskLevel} />
           </p>
         </div>
-        {type === "visit" || type === "followup" ? (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="field-label mb-1">Date</label>
-              <DatePicker value={actionDate} onChange={setActionDate} />
-            </div>
-            <label className="field-label">
-              Notes
-              <input value={note} onChange={(event) => setNote(event.target.value)} className="field-control" placeholder="Add visit or follow-up notes" />
-            </label>
-          </div>
-        ) : (
-          <p className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
-            This records the selected action in the intervention log. It does not send a phone call or message.
-          </p>
-        )}
+        <p className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+          Demo mode · this action will be shown as a local interaction only and will not contact a family or update the server.
+          {(type === "visit" || type === "followup") && ` Sample date: ${actionDate}.`}
+        </p>
         <div className="mt-6 flex justify-end gap-3">
           <button onClick={onClose} className="secondary-button">Cancel</button>
-          <button disabled={saving} onClick={submit} className="primary-button">
-            {saving ? "Saving..." : config.action}
+          <button onClick={submit} className="primary-button">
+            {config.action}
           </button>
         </div>
       </section>

@@ -3,13 +3,12 @@ import { AlertTriangle, Calendar, CalendarClock, Home, Phone, Search, Send, Shie
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { ActionModal, type ActionType } from "@/components/ActionModal";
-import { DashboardNotice, DemoDataBadge } from "@/components/DashboardNotice";
+import { DemoDataBadge } from "@/components/DashboardNotice";
 import { AppShell } from "@/components/AppShell";
 import { RiskBadge, SectionHeading, StatusBadge } from "@/components/Ui";
 import { InterventionTypeLabel, RiskReasonList } from "@/components/DashboardPreview";
 import { assets } from "@/data/mockData";
-import { resolveIntervention } from "@/lib/api";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import { DEMO_ASHA_DASHBOARD } from "@/data/demoDashboard";
 import { PageHero } from "@/pages/PortalPages";
 import type { ChildRecord, DashboardChild, DashboardIntervention, RiskLevel } from "@/types";
 
@@ -49,18 +48,11 @@ function MetricLegend({ data }: { data: Array<{ label: string; value: number }> 
 
 function DashboardShellNotice({
   data,
-  loading,
-  error,
 }: {
-  data: { demoDataPresent: boolean } | null;
-  loading: boolean;
-  error: string | null;
+  data: { demoDataPresent: boolean };
 }) {
   return (
-    <>
-      {data?.demoDataPresent && <DemoDataBadge />}
-      <DashboardNotice loading={loading} error={error} empty={false} />
-    </>
+    data.demoDataPresent ? <DemoDataBadge /> : null
   );
 }
 
@@ -69,14 +61,14 @@ function childRecord(child: DashboardChild): ChildRecord {
 }
 
 export function AshaRiskDashboard() {
-  const { data, loading, error, reload } = useDashboardData("asha");
+  const data = DEMO_ASHA_DASHBOARD;
   const [risk, setRisk] = useState<"All" | RiskLevel>("All");
   const [query, setQuery] = useState("");
   const [activeChild, setActiveChild] = useState<ChildRecord | null>(null);
   const [action, setAction] = useState<ActionType>("reminder");
 
   const rankedChildren = useMemo(
-    () => (data?.children ?? [])
+    () => data.children
       .filter((child) => child.riskLevel !== null)
       .filter((child) => risk === "All" || child.riskLevel === risk)
       .filter((child) => `${child.childName} ${child.childId} ${child.village}`.toLowerCase().includes(query.toLowerCase()))
@@ -85,7 +77,7 @@ export function AshaRiskDashboard() {
   );
   const villageGroups = useMemo(() => {
     const groups = new Map<string, number>();
-    for (const child of data?.children ?? []) {
+    for (const child of data.children) {
       groups.set(child.village || "Unassigned village", (groups.get(child.village || "Unassigned village") ?? 0) + 1);
     }
     return Array.from(groups.entries(), ([village, totalChildren]) => ({ village, totalChildren }));
@@ -100,15 +92,15 @@ export function AshaRiskDashboard() {
       <header className="mb-5">
         <p className="text-xs font-bold uppercase tracking-[.16em] text-teal">Today’s priority queue</p>
         <h1 className="mt-1 font-display text-3xl font-extrabold text-ink">High-risk queue & village capacity</h1>
-        <p className="mt-2 text-sm text-slate-500">Children are ordered by their latest stored ML priority score.</p>
+        <p className="mt-2 text-sm text-slate-500">Sample community profiles are ordered by demo priority score.</p>
       </header>
       <div className="my-4 flex flex-wrap items-center gap-3">
-        <DashboardShellNotice data={data} loading={loading} error={error} />
+        <DashboardShellNotice data={data} />
       </div>
       <section className="mb-7 surface-card p-6">
-        <SectionHeading eyebrow="Assigned children" title="Village workload" detail="Only children assigned to your authenticated ASHA account are shown." />
+        <SectionHeading eyebrow="Assigned children" title="Village workload" detail="Sample children assigned to the Jategaon Bk demo community." />
         {villageGroups.length === 0 ? (
-          <DashboardNotice loading={loading} error={error} empty={!loading && !error} emptyMessage="No assigned children are available." />
+          <p className="mt-4 text-sm text-slate-500">No assigned children are available.</p>
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {villageGroups.map((group) => (
@@ -133,7 +125,7 @@ export function AshaRiskDashboard() {
             ))}
           </div>
         </div>
-        <DashboardNotice loading={loading} error={error} empty={!loading && !error && rankedChildren.length === 0} emptyMessage="No stored risk predictions match this queue." />
+        {rankedChildren.length === 0 && <p className="mt-4 text-sm text-slate-500">No demo profiles match this search.</p>}
         <div className="mt-5 table-wrap">
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -159,41 +151,39 @@ export function AshaRiskDashboard() {
           </div>
         </div>
       </section>
-      {activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} onSaved={reload} />}
+      {activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} />}
     </AppShell>
   );
 }
 
 export function AshaInterventions() {
-  const { data, loading, error, reload } = useDashboardData("asha");
+  const [records, setRecords] = useState(DEMO_ASHA_DASHBOARD.interventions);
   const [activeChild, setActiveChild] = useState<ChildRecord | null>(null);
   const [action, setAction] = useState<ActionType>("call");
   const [filter, setFilter] = useState("All");
-  const records = (data?.interventions ?? []).filter(
+  const data = DEMO_ASHA_DASHBOARD;
+  const visibleRecords = records.filter(
     (record) => filter === "All" || record.status.toLowerCase() === filter.toLowerCase(),
   );
   const begin = (type: ActionType) => {
-    if (!data?.children[0]) {
+    if (!data.children[0]) {
       toast.error("No child is assigned to your account yet.");
       return;
     }
     setAction(type);
     setActiveChild(childRecord(data.children[0]));
   };
-  const resolveAction = async (record: DashboardIntervention) => {
-    try {
-      await resolveIntervention(record.id);
-      toast.success(`${record.childName}'s intervention was resolved.`);
-      await reload();
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : "Unable to resolve the intervention.");
-    }
+  const resolveAction = (record: DashboardIntervention) => {
+    setRecords((current) => current.map((item) => item.id === record.id
+      ? { ...item, status: "resolved", resolvedAt: new Date().toISOString() }
+      : item));
+    toast.success(`${record.childName}'s sample intervention was resolved locally.`);
   };
 
   return (
     <AppShell role="asha">
       <PageHero eyebrow="Interventions" title="Turn priorities into completed care" detail="Actions are persisted to Supabase and scoped to your assigned children." image={assets.ashaCare} />
-      <div className="my-4"><DashboardNotice loading={loading} error={error} empty={false} /></div>
+      <div className="my-4"><DemoDataBadge /></div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
           { type: "call", label: "Call parent", icon: Phone },
@@ -219,8 +209,8 @@ export function AshaInterventions() {
             <table className="data-table">
               <thead><tr><th>Child</th><th>Intervention</th><th>Date</th><th>Note</th><th>Status</th><th>Resolve</th></tr></thead>
               <tbody>
-                {!loading && records.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-500">No intervention records match this filter.</td></tr>}
-                {records.map((record) => (
+                {visibleRecords.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-slate-500">No intervention records match this filter.</td></tr>}
+                {visibleRecords.map((record) => (
                   <tr key={record.id}>
                     <td><p className="font-bold text-ink">{record.childName}</p><p className="text-xs text-slate-400">{record.childId}</p></td>
                     <td><InterventionTypeLabel type={record.type} /></td>
@@ -235,14 +225,14 @@ export function AshaInterventions() {
           </div>
         </div>
       </section>
-      {activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} onSaved={reload} />}
+      {activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} />}
     </AppShell>
   );
 }
 
 export function AshaAnalytics() {
-  const { data, loading, error } = useDashboardData("asha");
-  const analytics = data?.analytics;
+  const data = DEMO_ASHA_DASHBOARD;
+  const analytics = data.analytics;
   const riskData = (analytics?.riskDistribution ?? []).map((item) => ({ ...item, fill: riskColors[item.label] }));
   const vaccinationData = analytics?.vaccinationDistribution ?? [];
   const monthlyData = analytics?.monthlyTrend ?? [];
@@ -252,9 +242,8 @@ export function AshaAnalytics() {
     <AppShell role="asha">
       <PageHero eyebrow="Area analytics" title="Understand your area's vaccination rhythm" detail="Counts and charts are calculated from your assigned children, vaccination records, predictions, and interventions." image={assets.ashaCare} />
       <div className="my-4 flex flex-wrap items-center gap-3">
-        <DashboardShellNotice data={data} loading={loading} error={error} />
+        <DashboardShellNotice data={data} />
       </div>
-      <DashboardNotice loading={loading} error={error} empty={!loading && !error && (data?.children.length ?? 0) === 0} emptyMessage="No assigned children are available for analytics." />
       <div className="mt-7 grid gap-6 xl:grid-cols-2">
         <ChartCard title="Vaccination status" detail="Counts derived from recorded dose dates and due dates.">
           <ResponsiveContainer width="100%" height={270}>

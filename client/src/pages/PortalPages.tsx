@@ -12,10 +12,10 @@ import { DashboardNotice, DemoDataBadge } from "@/components/DashboardNotice";
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState, ProgressLine, RiskBadge, SectionHeading, StatCard, StatusBadge } from "@/components/Ui";
 import { areas, ashaProfile, assets, children, coverageData, interventionData, interventions, parentProfile, primaryChild, reminders, trendData, vaccinationRecords } from "@/data/mockData";
-import { createReminderPlan, loginWithEmailOtp, resolveIntervention, sendEmailOtp, type ReminderPlanResponse } from "@/lib/api";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import { loginWithPassword, registerWithPassword } from "@/lib/auth";
+import { createReminderPlan, getAshaDashboard, getParentDashboard, resolveIntervention, type ReminderPlanResponse } from "@/lib/api";
 import { reminderService, vaccinationService } from "@/services/mockApi";
-import type { ChildRecord, RiskLevel, Role, VaccinationStatus } from "@/types";
+import type { ChildRecord, DashboardResponse, RiskLevel, Role, VaccinationStatus } from "@/types";
 
 const iconClass = "h-4 w-4";
 
@@ -51,47 +51,24 @@ export function LoginPage() {
   const [, setLocation] = useLocation();
   const [role, setRole] = useState<Role>("parent");
   const [tab, setTab] = useState<"login" | "register">("login");
-  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lang, setLang] = useState<"EN" | "HI" | "MR">("EN");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
 
   const login = async () => {
-    setLoading(true);
-    try {
-      const response = await loginWithEmailOtp({
-        email,
-        otp,
-      });
-      if (!response.access_token) {
-        throw new Error("The login response did not include an access token.");
-      }
-      localStorage.setItem("access_token", response.access_token);
-      const userProfile = response.user_profile;
-      localStorage.setItem("user_profile", JSON.stringify(userProfile));
-      setLocation(userProfile.role === "parent" ? "/parent/dashboard" : "/asha/dashboard");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to verify your login.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const requestOtp = async () => {
-    if (!email.trim()) {
-      toast.error("Enter your email address first.");
+    if (!email.trim() || !password) {
+      toast.error("Enter your email address and password.");
       return;
     }
+    setLoading(true);
     try {
-      const response = await sendEmailOtp({ email: email.trim() });
-      if (!response.sent) {
-        throw new Error("Supabase did not confirm that the verification code was sent.");
-      }
-      setOtpSent(true);
-      toast.success("Verification code sent to your email.");
+      const { role: userRole } = await loginWithPassword(email, password);
+      setLocation(userRole === "parent" ? "/parent/dashboard" : "/asha/dashboard");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to send the verification code.");
+      toast.error(error instanceof Error ? error.message : "Unable to log in.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -170,7 +147,7 @@ export function LoginPage() {
               }`}
             >
               <UserRound className="h-4 w-4" />
-              <span>Parent Login</span>
+              <span>{tab === "login" ? "Parent Login" : "Parent"}</span>
             </button>
             <button
               type="button"
@@ -180,7 +157,7 @@ export function LoginPage() {
               }`}
             >
               <HeartPulse className="h-4 w-4" />
-              <span>ASHA Worker Login</span>
+              <span>{tab === "login" ? "ASHA Worker Login" : "ASHA Worker"}</span>
             </button>
           </div>
 
@@ -221,23 +198,15 @@ export function LoginPage() {
               </label>
 
               <label className="block text-xs font-bold text-slate-700">
-                OTP
-                <div className="mt-1 flex gap-2">
-                  <input
-                    type="text"
-                    value={otp}
-                    onChange={(event) => setOtp(event.target.value)}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-center font-display text-base font-bold tracking-[.45em] text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
-                    placeholder="Enter OTP"
-                  />
-                  <button
-                    type="button"
-                    onClick={requestOtp}
-                    className="h-11 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300"
-                  >
-                    {otpSent ? "Resend code" : "Send code"}
-                  </button>
-                </div>
+                Password
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-medium text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+                  placeholder="Enter your password"
+                />
               </label>
 
               {/* Primary Action Button */}
@@ -247,12 +216,12 @@ export function LoginPage() {
                 disabled={loading}
                 className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#064E3B] text-sm lg:text-base font-bold text-white shadow-md shadow-emerald-950/20 transition hover:bg-emerald-900 active:scale-[0.99] disabled:opacity-60"
               >
-                <span>{loading ? "Verifying..." : "Verify & Continue"}</span>
+                <span>{loading ? "Logging in..." : "Log in"}</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           ) : (
-            <RegisterPanel role={role} onBack={() => setTab("login")} onDone={() => setLocation(role === "parent" ? "/parent/child-registration" : "/asha/register")} />
+            <RegisterPanel role={role} onBack={() => setTab("login")} />
           )}
 
           {/* Footer Link */}
@@ -273,138 +242,89 @@ export function LoginPage() {
   );
 }
 
-function RegisterPanel({ role, onBack, onDone }: { role: Role; onBack: () => void; onDone: () => void }) {
-  const fields = role === "parent" ? ["Name", "Child’s date of birth", "Parent email", "Location", "PIN code"] : ["Panchayat name", "Panchayat / Worker ID", "Email address", "Set password"];
+function RegisterPanel({ role, onBack }: { role: Role; onBack: () => void }) {
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [dob, setDob] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [emailVerified, setEmailVerified] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [accountCreated, setAccountCreated] = useState(false);
 
-  const requestRegistrationOtp = async () => {
-    if (!email.trim()) {
-      toast.error("Enter your email address before requesting a verification code.");
+  const submitRegistration = async () => {
+    if (!fullName.trim() || !email.trim() || !password) {
+      toast.error("Enter your name, email address, and password.");
       return;
     }
-    setSendingOtp(true);
+    if (password.length < 6) {
+      toast.error("Your password must be at least 6 characters.");
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      const response = await sendEmailOtp({ email: email.trim() });
-      if (!response.sent) {
-        throw new Error("Supabase did not confirm that the verification code was sent.");
-      }
-      setOtpSent(true);
-      setEmailVerified(false);
-      toast.success("Verification code sent to your email.");
+      await registerWithPassword(email, password, role, fullName);
+      setAccountCreated(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to send the verification code.");
+      toast.error(error instanceof Error ? error.message : "Unable to create your account.");
     } finally {
-      setSendingOtp(false);
+      setSubmitting(false);
     }
-  };
-
-  const verifyRegistrationOtp = async () => {
-    if (!otp.trim()) {
-      toast.error("Enter the verification code from your email.");
-      return;
-    }
-    setVerifyingOtp(true);
-    try {
-      const response = await loginWithEmailOtp({ email: email.trim(), otp: otp.trim() });
-      if (!response.access_token) {
-        throw new Error("The verification response did not include an access token.");
-      }
-      setEmailVerified(true);
-      localStorage.setItem("access_token", response.access_token);
-      const userProfile = response.user_profile;
-      localStorage.setItem("user_profile", JSON.stringify(userProfile));
-      toast.success("Email verified. You can continue registration.");
-    } catch (error) {
-      setEmailVerified(false);
-      toast.error(error instanceof Error ? error.message : "The verification code is invalid or expired.");
-    } finally {
-      setVerifyingOtp(false);
-    }
-  };
-
-  const submitRegistration = () => {
-    if (!emailVerified) {
-      toast.error("Verify your email before continuing registration.");
-      return;
-    }
-    toast.success("Account details saved.");
-    onDone();
   };
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        {fields.map((field, index) => {
-          const fullWidth = role === "asha" ? index < 2 : index === 0;
-          const isEmailField = field.includes("email") || field.includes("Email");
-          const isDateField = field.includes("date") || field.includes("birth");
-
-          if (isDateField) {
-            return (
-              <div key={field} className={fullWidth ? "sm:col-span-2" : ""}>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  {field}
-                </label>
-                <DatePicker
-                  value={dob}
-                  onChange={setDob}
-                  placeholder="Select child's date of birth"
-                  isDob={true}
-                />
-              </div>
-            );
-          }
-
-          return (
-            <label key={field} className={`block text-xs font-bold text-slate-700 ${fullWidth ? "sm:col-span-2" : ""}`}>
-              {field}
-              <input
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-ink outline-none transition focus:border-emerald-600 focus:bg-white"
-                placeholder={index === 0 ? role === "parent" ? "Priya Sharma" : "Wagholi Panchayat" : isEmailField ? "you@example.com" : field.includes("PIN") ? "412207" : "Enter details"}
-                type={field.includes("password") ? "password" : isEmailField ? "email" : "text"}
-                value={isEmailField ? email : undefined}
-                onChange={isEmailField ? (event) => { setEmail(event.target.value); setEmailVerified(false); } : undefined}
-              />
-            </label>
-          );
-        })}
-      </div>
-      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
-        <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">Email verification required</p>
-        <p className="mt-1 text-xs text-emerald-900/70">Verify your email before the account registration can continue.</p>
-        <div className="mt-3 flex gap-2">
-          <input
-            className="field-control min-w-0 flex-1 bg-white"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={otp}
-            onChange={(event) => { setOtp(event.target.value); setEmailVerified(false); }}
-            placeholder="Enter email code"
-            disabled={!otpSent || verifyingOtp}
-          />
-          <button type="button" onClick={requestRegistrationOtp} disabled={sendingOtp} className="secondary-button shrink-0">
-            {sendingOtp ? "Sending..." : otpSent ? "Resend code" : "Send code"}
-          </button>
-          <button type="button" onClick={verifyRegistrationOtp} disabled={!otpSent || verifyingOtp || emailVerified} className="primary-button shrink-0">
-            {emailVerified ? "Verified" : verifyingOtp ? "Checking..." : "Verify"}
-          </button>
+      {accountCreated ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900" role="status">
+          Account created! Please check your email to verify your account before logging in.
         </div>
-      </div>
-      <button
-        type="button"
-        onClick={submitRegistration}
-        className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#064E3B] text-base font-bold text-white shadow-lg transition hover:bg-emerald-900"
-      >
-        <span>{emailVerified ? "Register & Continue" : "Verify email to continue"}</span>
-        <ArrowRight className="h-5 w-5" />
-      </button>
+      ) : (
+        <>
+          <p className="text-xs font-bold text-slate-700">
+            Creating an account as {role === "asha" ? "ASHA Worker" : "Parent"}
+          </p>
+          <label className="block text-xs font-bold text-slate-700">
+            Full name
+            <input
+              type="text"
+              autoComplete="name"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-medium text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+              placeholder={role === "asha" ? "ASHA worker name" : "Your name"}
+            />
+          </label>
+          <label className="block text-xs font-bold text-slate-700">
+            {role === "parent" ? "Parent / mother email" : "Worker email"}
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-medium text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+              placeholder="you@example.com"
+            />
+          </label>
+          <label className="block text-xs font-bold text-slate-700">
+            Password
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-medium text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+              placeholder="At least 6 characters"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={submitRegistration}
+            disabled={submitting}
+            className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#064E3B] text-base font-bold text-white shadow-lg transition hover:bg-emerald-900 disabled:opacity-60"
+          >
+            <span>{submitting ? "Creating account..." : "Create account"}</span>
+            <ArrowRight className="h-5 w-5" />
+          </button>
+        </>
+      )}
       <p className="mt-3 text-center text-xs text-slate-400">
         Already registered?{" "}
         <button type="button" onClick={onBack} className="font-bold text-emerald-700 hover:underline">
@@ -464,7 +384,31 @@ function SimpleVaccinationTimeline({ rows }: { rows: typeof vaccinationRecords }
 
 export function ParentDashboard() {
   const [, setLocation] = useLocation();
-  const { data, loading, error } = useDashboardData("parent");
+  const [data, setData] = useState<DashboardResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let isActive = true;
+    const loadDashboard = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await getParentDashboard();
+        if (!Array.isArray(response.children)) throw new Error("Dashboard response did not contain a children array.");
+        if (isActive) setData(response);
+      } catch (reason) {
+        console.error("Failed to load parent dashboard data:", reason);
+        if (isActive) {
+          setData(null);
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      } finally {
+        if (isActive) setLoading(false);
+      }
+    };
+    void loadDashboard();
+    return () => { isActive = false; };
+  }, []);
   const dashboardChild = data?.children[0] ?? null;
   const childRecords = data?.vaccinationRecords.filter(
     (record) => record.childId === dashboardChild?.id,
@@ -744,77 +688,6 @@ export function ParentDashboard() {
   );
 }
 
-export function ParentRegistration() {
-  const [, setLocation] = useLocation();
-  const [step, setStep] = useState<1 | 2>(1);
-  const [generatedId, setGeneratedId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [babyDob, setBabyDob] = useState("");
-
-  const handleSubmitStep1 = (event: React.FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setTimeout(() => {
-      const newId = `CH${Math.floor(1000 + Math.random() * 9000)}`;
-      setGeneratedId(newId);
-      setSaving(false);
-      setStep(2);
-      toast.success("Child registered! Digital Health Card created.");
-    }, 400);
-  };
-
-  return (
-    <AppShell role="parent">
-      <PageHero eyebrow="Baby Profile" title="Register Your Baby" detail="Quick setup to create a verified vaccination card." image={assets.parentCare} />
-
-      {step === 1 ? (
-        /* Step 1: Form Only (No Baby ID, No Verification Code) */
-        <form onSubmit={handleSubmitStep1} className="surface-card animate-card-in max-w-2xl mx-auto p-6 lg:p-8">
-          <SectionHeading title="Step 1: Baby & Family Information" detail="Enter basic details. Baby ID is generated automatically." />
-          <div className="grid gap-5 md:grid-cols-2">
-            <label className="field-label">Full Name<input required className="field-control" placeholder="e.g. Aarav Sharma" /></label>
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Date of Birth</label>
-              <DatePicker value={babyDob} onChange={setBabyDob} placeholder="Select date of birth" isDob={true} />
-            </div>
-            <label className="field-label">Gender<select className="field-control" defaultValue="Male"><option>Male</option><option>Female</option><option>Other</option></select></label>
-            <label className="field-label">Mother's Name<input required className="field-control" placeholder="e.g. Priya Sharma" /></label>
-            <label className="field-label">Email Address<input required type="email" className="field-control" placeholder="e.g. priya@example.com" /></label>
-            <label className="field-label">Village / City<input required className="field-control" placeholder="e.g. Wagholi" /></label>
-          </div>
-          <button disabled={saving} className="primary-button mt-8 w-full text-base py-3 font-extrabold">
-            {saving ? "Generating Pass..." : "Register & Generate Pass"} <ArrowRight className={iconClass} />
-          </button>
-        </form>
-      ) : (
-        /* Step 2: Confirmation Screen with Digital Health Card */
-        <div className="surface-card animate-card-in max-w-md mx-auto p-8 text-center">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-100 text-emerald-700 mb-4 animate-check-pop">
-            <CheckCircle2 className="h-8 w-8 stroke-[2.5]" />
-          </div>
-          <h2 className="font-display text-2xl font-extrabold text-ink">Registration Complete!</h2>
-          <p className="mt-1 text-sm text-slate-500">Assigned ID: <strong className="text-teal font-mono text-base">{generatedId}</strong></p>
-
-          <div className="mt-6 rounded-2xl border border-dashed border-teal-200 bg-teal-50/70 p-6 flex flex-col items-center">
-            <QrCode className="h-28 w-28 text-teal mb-3" />
-            <p className="text-xs font-bold uppercase tracking-wider text-teal-800">Digital Health Card Pass</p>
-            <p className="text-xs text-slate-500 mt-1">Show code to ASHA worker for fast check-in</p>
-          </div>
-
-          <div className="mt-6 flex gap-3">
-            <button type="button" onClick={() => toast.info(`Pass Code: QR-${generatedId}-MH`)} className="secondary-button flex-1 py-3 font-bold">
-              <QrCode className={iconClass} /> Show Card
-            </button>
-            <button type="button" onClick={() => setLocation("/parent/dashboard")} className="primary-button flex-1 py-3 font-bold">
-              Done <Check className={iconClass} />
-            </button>
-          </div>
-        </div>
-      )}
-    </AppShell>
-  );
-}
-
 export function ParentProfile() {
   const [editing, setEditing] = useState(false);
   return (
@@ -1021,11 +894,38 @@ export function ParentReminders() {
 }
 
 export function AshaDashboard() {
-  const { data, loading, error, reload } = useDashboardData("asha");
+  const [data, setData] = useState<DashboardResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const reload = () => setRefreshKey((key) => key + 1);
   const [activeChild, setActiveChild] = useState<ChildRecord | null>(null);
   const [action, setAction] = useState<ActionType>("call");
   const [filter, setFilter] = useState("All");
   const metricValue = (value: number) => loading ? "…" : error ? "—" : value;
+
+  useEffect(() => {
+    let isActive = true;
+    const loadDashboard = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await getAshaDashboard();
+        if (!Array.isArray(response.children)) throw new Error("Dashboard response did not contain a children array.");
+        if (isActive) setData(response);
+      } catch (reason) {
+        console.error("Failed to load ASHA dashboard data:", reason);
+        if (isActive) {
+          setData(null);
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      } finally {
+        if (isActive) setLoading(false);
+      }
+    };
+    void loadDashboard();
+    return () => { isActive = false; };
+  }, [refreshKey]);
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);

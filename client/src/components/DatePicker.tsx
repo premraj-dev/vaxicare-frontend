@@ -115,7 +115,7 @@ export function DatePicker({
   }, [open, parsedValue, todayYear, todayMonth]);
 
   // Generate Year Range
-  const startYear = isDob ? 2015 : 1970;
+  const startYear = isDob ? 1900 : 1970;
   const endYear = isDob ? todayYear : todayYear + 10;
   const years = useMemo(() => {
     const list: number[] = [];

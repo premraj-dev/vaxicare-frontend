@@ -3,7 +3,7 @@
 - [x] Add a visible Parent logout control in the desktop account area and mobile navigation.
 - [x] Verify the logout action returns the user to the VaxiCare login screen.
 - [x] Remove the Parent desktop left sidebar and replace it with a simplified header plus bottom navigation.
-- [x] Keep only Overview, Register Child, Vaccination, and Reminders in the Parent primary navigation.
+- [x] Keep only Overview, Vaccination, Reminders, and Profile in the Parent primary navigation.
 - [x] Verify the Parent-only navigation on desktop and mobile.
 - [x] Remove the ASHA desktop left sidebar and replace it with a simplified header plus bottom navigation.
 - [x] Make Area Registration the first ASHA setup page and route workers there after ASHA login or registration.

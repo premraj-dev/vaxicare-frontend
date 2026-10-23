@@ -69,20 +69,22 @@ cd vaxicare-frontend
 # Install
 pnpm install
 
-# Optional local API configuration in .env.local (no browser API key is needed)
-# VITE_API_BASE_URL=http://127.0.0.1:8000
+# Frontend .env.local settings. The anon key is public; never use a service-role key here.
+# VITE_API_URL=http://127.0.0.1:8000
+# VITE_SUPABASE_URL=https://your-project.supabase.co
+# VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 # Run
 pnpm run dev
 ```
 
-For local Supabase-backed dashboards and email OTP login, configure the backend `.env` using [`vaxicare-ml-api/.env.example`](../vaxicare-ml-api/.env.example), run the migration in [`vaxicare-ml-api/migrations/20261022_demo_dashboard.sql`](../vaxicare-ml-api/migrations/20261022_demo_dashboard.sql) in Supabase SQL Editor, and start the API at `http://127.0.0.1:8000`.
+For local Supabase-backed dashboards and password auth, set the frontend variables above, configure the backend `.env` using [`vaxicare-ml-api/.env.example`](../vaxicare-ml-api/.env.example), apply the migrations in `vaxicare-ml-api/migrations/` in Supabase SQL Editor, and start the API at `http://127.0.0.1:8000`.
 
 ---
 
 ## 🔐 Authentication
 
-Email OTP is sent and verified by Supabase Auth through the FastAPI backend. Authenticated dashboard requests carry the user's Supabase bearer token; the service-role key is never exposed to the browser.
+Email/password signup and login use the Supabase JavaScript client. Enable email confirmations in Supabase Auth; signup stores the selected `parent` or `asha` role in user metadata and the UI asks users to verify their email before logging in. The ASHA role selector is self-selected, so production deployments should add invite or administrator approval before granting ASHA access. The Supabase anon key is safe for browser use when Row Level Security is configured; never expose the service-role key. Authenticated dashboard requests carry the user's Supabase bearer token to the FastAPI backend.
 
 ## Demo data commands
 

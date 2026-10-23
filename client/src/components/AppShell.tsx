@@ -1,11 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { Bell, ClipboardPlus, HeartPulse, Home, LayoutDashboard, LogOut, ShieldAlert, UserRound, UsersRound, BarChart3 } from "lucide-react";
+import { Bell, HeartPulse, Home, LayoutDashboard, LogOut, ShieldAlert, UserRound, UsersRound, BarChart3 } from "lucide-react";
+import { toast } from "sonner";
+import { logout as signOut } from "@/lib/auth";
 import type { Role } from "@/types";
 import { BrandMark } from "@/components/BrandMark";
 
 const parentNav = [
   { href: "/parent/dashboard", label: "Overview", icon: Home },
-  { href: "/parent/child-registration", label: "Register child", icon: ClipboardPlus },
   { href: "/parent/vaccination", label: "Vaccination", icon: HeartPulse },
   { href: "/parent/reminders", label: "Reminders", icon: Bell },
   { href: "/parent/profile", label: "Profile", icon: UserRound },
@@ -23,10 +24,16 @@ export function AppShell({ role, children }: { role: Role; children: React.React
   const [location, setLocation] = useLocation();
   const nav = role === "parent" ? parentNav : ashaNav;
   const portalLabel = role === "parent" ? "Parent care" : "ASHA care";
-  const logout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user_profile");
-    setLocation("/login");
+  const logout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to sign out.");
+    } finally {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("user_profile");
+      setLocation("/login");
+    }
   };
 
   return (
@@ -51,7 +58,7 @@ export function AppShell({ role, children }: { role: Role; children: React.React
       <main className="page-pad min-w-0 flex-1 pb-24">{children}</main>
 
       <nav aria-label={`${portalLabel} navigation`} className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/96 px-1 py-2 backdrop-blur shadow-lg sm:px-2">
-        <div className="mx-auto grid max-w-2xl grid-cols-5 items-center gap-1">
+        <div className={`mx-auto grid max-w-2xl ${role === "parent" ? "grid-cols-4" : "grid-cols-5"} items-center gap-1`}>
           {nav.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
