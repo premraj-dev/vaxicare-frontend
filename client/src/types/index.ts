@@ -100,3 +100,29 @@ export type DashboardResponse = {
   };
   demoDataPresent: boolean;
 };
+
+export type ParentDashboardResponse = {
+  child: {
+    name: string;
+    risk_status: "low" | "medium" | "high";
+  };
+  total_doses: number;
+  completed: number;
+  upcoming: number;
+  overdue: number;
+  next_vaccine: {
+    name: string;
+    due_date: string;
+    status: "pending" | "overdue";
+  };
+};
+
+export type AshaDashboardResponse = {
+  total_children: number;
+  high_risk: number;
+  medium_risk: number;
+  low_risk: number;
+  vaccinated_this_month: number;
+  pending: number;
+  overdue: number;
+};

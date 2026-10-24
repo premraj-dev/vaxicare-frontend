@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Calendar, CalendarClock, Home, Phone, Search, Send, ShieldAlert, Sparkles, UsersRound } from "lucide-react";
+import { useLocation } from "wouter";
+import { AlertTriangle, Calendar, CalendarClock, Home, Phone, Plus, Search, Send, ShieldAlert, Sparkles, UsersRound, X } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { ActionModal, type ActionType } from "@/components/ActionModal";
@@ -60,81 +61,273 @@ function childRecord(child: DashboardChild): ChildRecord {
   return child;
 }
 
+const MOCK_RISK_QUEUE: DashboardChild[] = [
+  {
+    id: "mock-child-1",
+    childId: "VC-1042",
+    childName: "Anaya Patil",
+    parentName: "Meera Patil",
+    parentEmail: "meera.patil@example.test",
+    guardianPhone: "+91 90000 10042",
+    dob: "2024-02-14",
+    gender: "Female",
+    village: "Wagholi",
+    lastVaccine: "OPV 2",
+    nextVaccine: "DPT 3",
+    nextDueDate: "2026-10-10",
+    missedDoses: 2,
+    daysOverdue: 14,
+    dropoutProbability: 0.84,
+    riskLevel: "High",
+    priorityScore: 91.4,
+    risk_reasons: ["Multiple missed doses", "More than 10 days overdue"],
+    isDemo: true,
+    completionRate: 58,
+  },
+  {
+    id: "mock-child-2",
+    childId: "VC-1087",
+    childName: "Rohan Shinde",
+    parentName: "Sunita Shinde",
+    parentEmail: "sunita.shinde@example.test",
+    guardianPhone: "+91 90000 10087",
+    dob: "2023-11-03",
+    gender: "Male",
+    village: "Kesnand",
+    lastVaccine: "DPT 2",
+    nextVaccine: "Measles 1",
+    nextDueDate: "2026-10-18",
+    missedDoses: 1,
+    daysOverdue: 6,
+    dropoutProbability: 0.67,
+    riskLevel: "High",
+    priorityScore: 78.2,
+    risk_reasons: ["Recent dose delay", "Upcoming catch-up needed"],
+    isDemo: true,
+    completionRate: 71,
+  },
+  {
+    id: "mock-child-3",
+    childId: "VC-1126",
+    childName: "Ira Jadhav",
+    parentName: "Pooja Jadhav",
+    parentEmail: "pooja.jadhav@example.test",
+    guardianPhone: "+91 90000 10126",
+    dob: "2025-01-22",
+    gender: "Female",
+    village: "Lohgaon",
+    lastVaccine: "OPV 1",
+    nextVaccine: "DPT 2",
+    nextDueDate: "2026-11-02",
+    missedDoses: 0,
+    daysOverdue: 0,
+    dropoutProbability: 0.42,
+    riskLevel: "Medium",
+    priorityScore: 54.6,
+    risk_reasons: ["Dose due soon"],
+    isDemo: true,
+    completionRate: 76,
+  },
+  {
+    id: "mock-child-4",
+    childId: "VC-1159",
+    childName: "Kabir More",
+    parentName: "Asha More",
+    parentEmail: "asha.more@example.test",
+    guardianPhone: "+91 90000 10159",
+    dob: "2024-08-09",
+    gender: "Male",
+    village: "Wagholi",
+    lastVaccine: "BCG",
+    nextVaccine: "OPV 1",
+    nextDueDate: "2026-10-28",
+    missedDoses: 0,
+    daysOverdue: 0,
+    dropoutProbability: 0.24,
+    riskLevel: "Low",
+    priorityScore: 28.3,
+    risk_reasons: [],
+    isDemo: true,
+    completionRate: 88,
+  },
+  {
+    id: "mock-child-5",
+    childId: "VC-1193",
+    childName: "Diya Kulkarni",
+    parentName: "Neha Kulkarni",
+    parentEmail: "neha.kulkarni@example.test",
+    guardianPhone: "+91 90000 10193",
+    dob: "2023-06-30",
+    gender: "Female",
+    village: "Kesnand",
+    lastVaccine: "Measles 1",
+    nextVaccine: "DPT Booster",
+    nextDueDate: "2026-12-15",
+    missedDoses: 0,
+    daysOverdue: 0,
+    dropoutProbability: 0.12,
+    riskLevel: "Low",
+    priorityScore: 16.8,
+    risk_reasons: [],
+    isDemo: true,
+    completionRate: 95,
+  },
+  {
+    id: "mock-child-6",
+    childId: "VC-1238",
+    childName: "Aditi Deshmukh",
+    parentName: "Kavita Deshmukh",
+    parentEmail: "kavita.deshmukh@example.test",
+    guardianPhone: "+91 90000 10238",
+    dob: "2024-05-16",
+    gender: "Female",
+    village: "Kesnand",
+    lastVaccine: "DPT 1",
+    nextVaccine: "OPV 2",
+    nextDueDate: "2026-11-08",
+    missedDoses: 1,
+    daysOverdue: 0,
+    dropoutProbability: 0.51,
+    riskLevel: "Medium",
+    priorityScore: 47.5,
+    risk_reasons: ["One dose needs follow-up"],
+    isDemo: true,
+    completionRate: 73,
+  },
+  {
+    id: "mock-child-7",
+    childId: "VC-1274",
+    childName: "Arjun Pawar",
+    parentName: "Sonal Pawar",
+    parentEmail: "sonal.pawar@example.test",
+    guardianPhone: "+91 90000 10274",
+    dob: "2023-09-12",
+    gender: "Male",
+    village: "Lohgaon",
+    lastVaccine: "OPV 3",
+    nextVaccine: "Measles 1",
+    nextDueDate: "2026-11-20",
+    missedDoses: 0,
+    daysOverdue: 0,
+    dropoutProbability: 0.19,
+    riskLevel: "Low",
+    priorityScore: 22.1,
+    risk_reasons: [],
+    isDemo: true,
+    completionRate: 91,
+  },
+];
+
 export function AshaRiskDashboard() {
-  const data = DEMO_ASHA_DASHBOARD;
+  const [, setLocation] = useLocation();
+  const [children, setChildren] = useState(MOCK_RISK_QUEUE);
   const [risk, setRisk] = useState<"All" | RiskLevel>("All");
   const [query, setQuery] = useState("");
+  const [showAllChildren, setShowAllChildren] = useState(false);
   const [activeChild, setActiveChild] = useState<ChildRecord | null>(null);
   const [action, setAction] = useState<ActionType>("reminder");
+  const [selectedChild, setSelectedChild] = useState<DashboardChild | null>(null);
+  const [showRegisterChild, setShowRegisterChild] = useState(false);
 
-  const rankedChildren = useMemo(
-    () => data.children
-      .filter((child) => child.riskLevel !== null)
-      .filter((child) => risk === "All" || child.riskLevel === risk)
-      .filter((child) => `${child.childName} ${child.childId} ${child.village}`.toLowerCase().includes(query.toLowerCase()))
-      .sort((left, right) => right.priorityScore - left.priorityScore),
-    [data, risk, query],
-  );
+  const rankedChildren = useMemo(() => {
+    const matchingRisk = risk === "All"
+      ? children
+      : children.filter((child) => child.riskLevel?.toLowerCase() === risk.toLowerCase());
+    const riskResults = matchingRisk.length > 0 ? matchingRisk : children;
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return riskResults
+      .filter((child) => `${child.childName} ${child.childId} ${child.village}`.toLowerCase().includes(normalizedQuery))
+      .sort((left, right) => right.priorityScore - left.priorityScore);
+  }, [children, risk, query]);
   const villageGroups = useMemo(() => {
     const groups = new Map<string, number>();
-    for (const child of data.children) {
+    for (const child of children) {
       groups.set(child.village || "Unassigned village", (groups.get(child.village || "Unassigned village") ?? 0) + 1);
     }
     return Array.from(groups.entries(), ([village, totalChildren]) => ({ village, totalChildren }));
-  }, [data]);
-  const begin = (child: DashboardChild, type: ActionType) => {
+  }, [children]);
+  const visibleChildren = showAllChildren ? rankedChildren : rankedChildren.slice(0, 5);
+  const begin = (child: DashboardChild, type: ActionType, event?: React.MouseEvent) => {
+    event?.stopPropagation();
     setAction(type);
     setActiveChild(childRecord(child));
   };
 
   return (
     <AppShell role="asha">
-      <header className="mb-5">
-        <p className="text-xs font-bold uppercase tracking-[.16em] text-teal">Today’s priority queue</p>
-        <h1 className="mt-1 font-display text-3xl font-extrabold text-ink">High-risk queue & village capacity</h1>
-        <p className="mt-2 text-sm text-slate-500">Sample community profiles are ordered by demo priority score.</p>
-      </header>
-      <div className="my-4 flex flex-wrap items-center gap-3">
-        <DashboardShellNotice data={data} />
-      </div>
-      <section className="mb-7 surface-card p-6">
-        <SectionHeading eyebrow="Assigned children" title="Village workload" detail="Sample children assigned to the Jategaon Bk demo community." />
-        {villageGroups.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No assigned children are available.</p>
-        ) : (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {villageGroups.map((group) => (
-              <div key={group.village} className="rounded-2xl border border-teal-100 bg-teal-50/50 p-4">
-                <p className="font-bold text-ink">{group.village}</p>
-                <p className="mt-2 text-xs text-slate-500">{group.totalChildren} assigned children</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="surface-card p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <SectionHeading title="Ranked care queue" detail="Sorted by the stored prediction priority score." />
-          <div className="flex flex-wrap gap-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} className="field-control w-56 pl-9" placeholder="Search child or village" />
-            </div>
-            {(["All", "High", "Medium", "Low"] as const).map((level) => (
-              <button key={level} onClick={() => setRisk(level)} className={risk === level ? "primary-button" : "secondary-button"}>{level}</button>
-            ))}
-          </div>
+      <div className="min-w-0 space-y-2 sm:space-y-3">
+        <header className="min-w-0 flex-none">
+          <p className="text-xs font-bold uppercase tracking-[.16em] text-teal">Today’s priority queue</p>
+          <h1 className="mt-1 break-words font-display text-xl font-extrabold text-ink sm:text-2xl">High-risk queue & village capacity</h1>
+          <p className="mt-1 text-xs text-slate-500 sm:text-sm">Assigned children are ordered by their stored prediction priority score.</p>
+        </header>
+        <div className="flex flex-none flex-wrap items-center gap-2">
+          <DemoDataBadge />
+          <button type="button" onClick={() => setShowRegisterChild(true)} className="primary-button">
+            <Plus className={iconClass} /> Add/Link Child
+          </button>
         </div>
-        {rankedChildren.length === 0 && <p className="mt-4 text-sm text-slate-500">No demo profiles match this search.</p>}
-        <div className="mt-5 table-wrap">
-          <div className="overflow-x-auto">
-            <table className="data-table">
+        <section className="min-w-0 flex-none rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+          <SectionHeading eyebrow="Assigned children" title="Village workload" detail="Children linked to your ASHA worker profile." />
+          {villageGroups.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">No village workload is available in the sample data.</p>
+          ) : (
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4">
+              {villageGroups.map((group) => (
+                <div key={group.village} className="rounded-2xl border border-teal-100 bg-teal-50/50 p-2.5 sm:p-3">
+                  <p className="font-bold text-ink">{group.village}</p>
+                  <p className="mt-1 text-xs text-slate-500">{group.totalChildren} assigned children</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="w-full min-w-0 rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-sm sm:p-4">
+          <div className="flex flex-none flex-col gap-2 sm:gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <SectionHeading title="Ranked care queue" detail="Sorted by the stored prediction priority score." />
+              {rankedChildren.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllChildren((showing) => !showing)}
+                  className="secondary-button min-h-8 px-3 py-1 text-xs"
+                >
+                  {showAllChildren ? "Show fewer" : `View All (${rankedChildren.length})`}
+                </button>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-wrap gap-2">
+              <div className="relative min-w-0 flex-1 sm:flex-none">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} className="field-control w-full pl-9 sm:w-56" placeholder="Search child or village" />
+              </div>
+              {(["All", "High", "Medium", "Low"] as const).map((level) => (
+                <button key={level} onClick={() => setRisk(level)} className={risk === level ? "primary-button" : "secondary-button"}>{level}</button>
+              ))}
+            </div>
+          </div>
+          {rankedChildren.length === 0 && <p className="mt-2 flex-none text-sm text-slate-500">No assigned children match this search.</p>}
+          <div className="mt-3 w-full overflow-x-auto rounded-xl border border-slate-200">
+            <table className="data-table w-full text-slate-700">
               <thead>
                 <tr><th>Child / Village</th><th>Last / next vaccine</th><th>Missed</th><th>Overdue</th><th>ML probability</th><th>Risk</th><th>Priority</th><th>Risk reasons</th><th>Action</th></tr>
               </thead>
               <tbody>
-                {rankedChildren.map((child) => (
-                  <tr key={child.id} className={child.riskLevel === "High" ? "bg-red-50/40" : ""}>
+                {visibleChildren.map((child) => (
+                  <tr
+                    key={child.id}
+                    className={`cursor-pointer focus-within:bg-teal-50/60 hover:bg-teal-50/40 ${child.riskLevel === "High" ? "bg-red-50/40" : ""}`}
+                    onClick={() => setSelectedChild(child)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedChild(child);
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-label={`Open actions for ${child.childName}`}
+                  >
                     <td><p className="font-bold text-ink">{child.childName}</p><p className="text-xs text-slate-400">{child.childId} · <strong>{child.village || "—"}</strong></p></td>
                     <td><p>{child.lastVaccine} → <strong className="text-ink">{child.nextVaccine}</strong></p><p className="text-xs text-slate-400">Due {child.nextDueDate ?? "—"}</p></td>
                     <td className="font-bold text-ink">{child.missedDoses}</td>
@@ -143,16 +336,123 @@ export function AshaRiskDashboard() {
                     <td><RiskBadge risk={child.riskLevel ?? "Normal"} /></td>
                     <td><span className="font-display text-lg font-extrabold text-ink">{child.priorityScore.toFixed(1)}</span></td>
                     <td><RiskReasonList reasons={child.risk_reasons} /></td>
-                    <td><div className="flex gap-2"><button onClick={() => begin(child, "call")} className="secondary-button min-h-9 px-3 py-1.5" aria-label={`Record call for ${child.childName}`}><Phone className={iconClass} /></button><button onClick={() => begin(child, child.riskLevel === "High" ? "reminder" : "visit")} className={child.riskLevel === "High" ? "danger-button min-h-9 px-3 py-1.5" : "primary-button min-h-9 px-3 py-1.5"}>{child.riskLevel === "High" ? "Record reminder" : "Take action"}</button></div></td>
+                    <td><div className="flex gap-2"><button onClick={(event) => begin(child, "call", event)} className="secondary-button min-h-9 px-3 py-1.5" aria-label={`Record call for ${child.childName}`}><Phone className={iconClass} /></button><button onClick={(event) => begin(child, child.riskLevel === "High" ? "reminder" : "visit", event)} className={child.riskLevel === "High" ? "danger-button min-h-9 px-3 py-1.5" : "primary-button min-h-9 px-3 py-1.5"}>{child.riskLevel === "High" ? "Record reminder" : "Take action"}</button></div></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
       </section>
+      </div>
       {activeChild && <ActionModal child={activeChild} type={action} onClose={() => setActiveChild(null)} />}
+      {selectedChild && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedChild(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="child-actions-title" className="modal-card">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-teal">Child record</p>
+                <h2 id="child-actions-title" className="mt-1 font-display text-xl font-extrabold text-ink">{selectedChild.childName}</h2>
+                <p className="mt-1 text-sm text-slate-500">{selectedChild.childId} · {selectedChild.village || "Village not assigned"}</p>
+              </div>
+              <button type="button" aria-label="Close child actions" onClick={() => setSelectedChild(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => { setSelectedChild(null); setLocation("/asha/vaccination-entry"); }}
+                className="primary-button min-h-12 justify-center"
+              >
+                <Calendar className={iconClass} /> Vaccine Entry
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSelectedChild(null); setShowRegisterChild(true); }}
+                className="secondary-button min-h-12 justify-center"
+              >
+                <Plus className={iconClass} /> Add/Link Child
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {showRegisterChild && (
+        <RegisterChildModal
+          onClose={() => setShowRegisterChild(false)}
+          onSaved={(child) => {
+            setChildren((current) => [child, ...current]);
+            setShowRegisterChild(false);
+            toast.success(`${child.childName} was added to this demo queue locally.`);
+          }}
+        />
+      )}
     </AppShell>
+  );
+}
+
+function RegisterChildModal({ onClose, onSaved }: { onClose: () => void; onSaved: (child: DashboardChild) => void }) {
+  const [childName, setChildName] = useState("");
+  const [childId, setChildId] = useState("");
+  const [village, setVillage] = useState("Jategaon Bk");
+  const [gender, setGender] = useState<"Female" | "Male">("Female");
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedId = childId.trim().toUpperCase();
+    const normalizedName = childName.trim();
+    if (!normalizedName || !normalizedId) return;
+    onSaved({
+      id: `offline-${normalizedId}`,
+      childId: normalizedId,
+      childName: normalizedName,
+      parentName: "Demo Parent",
+      parentEmail: "parent@example.test",
+      guardianPhone: "Not provided",
+      dob: "",
+      gender,
+      village: village.trim() || "Unassigned village",
+      lastVaccine: "Not recorded",
+      nextVaccine: "BCG",
+      nextDueDate: null,
+      missedDoses: 0,
+      daysOverdue: 0,
+      dropoutProbability: 0,
+      riskLevel: "Low",
+      priorityScore: 0,
+      risk_reasons: [],
+      isDemo: true,
+      completionRate: 0,
+    });
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="register-child-title" className="modal-card max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-teal">Offline demo</p>
+            <h2 id="register-child-title" className="mt-1 font-display text-xl font-extrabold text-ink">Add a sample child</h2>
+            <p className="mt-1 text-sm text-slate-500">This child is added to the current page only and is not sent to a server.</p>
+          </div>
+          <button type="button" aria-label="Close child registration" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <form onSubmit={(event) => void submit(event)} className="mt-5 space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="field-label">Child name<input className="field-control" value={childName} onChange={(event) => setChildName(event.target.value)} required maxLength={100} /></label>
+            <label className="field-label">Child ID<input className="field-control" value={childId} onChange={(event) => setChildId(event.target.value)} required maxLength={30} /></label>
+            <label className="field-label">Village<input className="field-control" value={village} onChange={(event) => setVillage(event.target.value)} maxLength={100} /></label>
+            <label className="field-label">Gender<select className="field-control" value={gender} onChange={(event) => setGender(event.target.value as "Female" | "Male")}><option>Female</option><option>Male</option></select></label>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="secondary-button">Cancel</button>
+            <button type="submit" className="primary-button">Add sample child</button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 

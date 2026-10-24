@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { AreaChart, Area, BarChart, Bar, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, ArrowRight, Bell, Calendar, CalendarClock, Check, CheckCircle2, ChevronRight, ClipboardCheck, Download, FileText, HeartPulse, Home, Info, MapPin, MessageCircle, Phone, Play, Plus, QrCode, ScanLine, Search, Send, ShieldAlert, Sparkles, Stethoscope, UserRound, UsersRound, Video, Volume2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bell, Calendar, CalendarClock, Check, CheckCircle2, ChevronRight, ClipboardCheck, Download, FileText, HeartPulse, Home, Info, MapPin, MessageCircle, Phone, Play, Plus, ScanLine, Search, Send, ShieldAlert, Sparkles, Stethoscope, UserRound, UsersRound, Video, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { ActionModal, type ActionType } from "@/components/ActionModal";
@@ -11,10 +11,16 @@ import { BrandMark } from "@/components/BrandMark";
 import { DashboardNotice, DemoDataBadge } from "@/components/DashboardNotice";
 import { DatePicker } from "@/components/DatePicker";
 import { EmptyState, ProgressLine, RiskBadge, SectionHeading, StatCard, StatusBadge } from "@/components/Ui";
-import { areas, ashaProfile, assets, children, coverageData, interventionData, interventions, parentProfile, primaryChild, reminders, trendData, vaccinationRecords } from "@/data/mockData";
-import { loginWithPassword, registerWithPassword } from "@/lib/auth";
+import { areas, ashaProfile, assets, children, coverageData, interventionData, interventions, parentProfile, primaryChild, trendData, vaccinationRecords } from "@/data/mockData";
+import {
+  loginWithPassword,
+  onPasswordRecovery,
+  registerWithPassword,
+  sendPasswordResetEmail,
+  updatePassword,
+} from "@/lib/auth";
 import { createReminderPlan, getAshaDashboard, getParentDashboard, resolveIntervention, type ReminderPlanResponse } from "@/lib/api";
-import { reminderService, vaccinationService } from "@/services/mockApi";
+import { vaccinationService } from "@/services/mockApi";
 import type { ChildRecord, DashboardResponse, RiskLevel, Role, VaccinationStatus } from "@/types";
 
 const iconClass = "h-4 w-4";
@@ -55,6 +61,24 @@ export function LoginPage() {
   const [lang, setLang] = useState<"EN" | "HI" | "MR">("EN");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [recoveryStep, setRecoveryStep] = useState<"email" | "password" | null>(null);
+  const [recoveryEmailSent, setRecoveryEmailSent] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+
+  useEffect(
+    () => {
+      if (!import.meta.env.VITE_SUPABASE_URL?.trim() || !import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()) return;
+      return onPasswordRecovery(() => {
+        setTab("login");
+        setRecoveryStep("password");
+        setNewPassword("");
+        setConfirmNewPassword("");
+      });
+    },
+    [],
+  );
 
   const login = async () => {
     if (!email.trim() || !password) {
@@ -69,6 +93,46 @@ export function LoginPage() {
       toast.error(error instanceof Error ? error.message : "Unable to log in.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const requestPasswordReset = async () => {
+    if (!email.trim()) {
+      toast.error("Enter your email address first.");
+      return;
+    }
+    setRecoveryLoading(true);
+    try {
+      await sendPasswordResetEmail(email);
+      setRecoveryEmailSent(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to send a password reset email.");
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
+
+  const saveNewPassword = async () => {
+    if (newPassword.length < 6) {
+      toast.error("Your password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast.error("The new passwords do not match.");
+      return;
+    }
+    setRecoveryLoading(true);
+    try {
+      await updatePassword(newPassword);
+      setRecoveryStep(null);
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setPassword("");
+      toast.success("Password updated. You can now log in.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to update your password.");
+    } finally {
+      setRecoveryLoading(false);
     }
   };
 
@@ -131,14 +195,28 @@ export function LoginPage() {
         <main className="mx-auto w-full max-w-md my-auto py-2">
           {/* Header Text */}
           <div className="mb-5">
-            <h2 className="font-display text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-ink">Welcome back</h2>
+            <h2 className="font-display text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-ink">
+              {recoveryStep === "password"
+                ? "Set a new password"
+                : recoveryStep === "email"
+                  ? "Reset your password"
+                  : tab === "register"
+                    ? `Create your ${role === "parent" ? "Parent" : "ASHA Worker"} account`
+                    : "Welcome back"}
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Track your child's vaccination journey
+              {recoveryStep
+                ? recoveryStep === "email"
+                  ? "We'll email you a secure link to reset your password."
+                  : "Choose a new password for your account."
+                : tab === "register"
+                  ? "Join the secure immunisation network"
+                  : "Track your child's vaccination journey"}
             </p>
           </div>
 
           {/* Role Selector Pills */}
-          <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-slate-100 p-1 mb-5">
+          {recoveryStep === null && <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-slate-100 p-1 mb-5">
             <button
               type="button"
               onClick={() => setRole("parent")}
@@ -159,10 +237,10 @@ export function LoginPage() {
               <HeartPulse className="h-4 w-4" />
               <span>{tab === "login" ? "ASHA Worker Login" : "ASHA Worker"}</span>
             </button>
-          </div>
+          </div>}
 
           {/* Sub-Mode Navigation Tabs */}
-          <div className="flex border-b border-slate-200 mb-5">
+          {recoveryStep === null && <div className="flex border-b border-slate-200 mb-5">
             <button
               type="button"
               onClick={() => setTab("login")}
@@ -181,10 +259,73 @@ export function LoginPage() {
             >
               Register
             </button>
-          </div>
+          </div>}
 
           {/* Input Fields */}
-          {tab === "login" ? (
+          {recoveryStep === "email" ? (
+            <div className="space-y-3.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Email address
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => { setEmail(event.target.value); setRecoveryEmailSent(false); }}
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-medium text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+                  placeholder="you@example.com"
+                />
+              </label>
+              {recoveryEmailSent && (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900" role="status">
+                  If an account exists for this email, a password reset link is on its way.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => void requestPasswordReset()}
+                disabled={recoveryLoading}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#064E3B] text-sm font-bold text-white shadow-md transition hover:bg-emerald-900 disabled:opacity-60"
+              >
+                {recoveryLoading ? "Sending link..." : "Send reset link"}
+              </button>
+              <button type="button" onClick={() => { setRecoveryStep(null); setRecoveryEmailSent(false); }} className="w-full py-2 text-sm font-bold text-emerald-700 hover:underline">
+                Back to log in
+              </button>
+            </div>
+          ) : recoveryStep === "password" ? (
+            <div className="space-y-3.5">
+              <label className="block text-xs font-bold text-slate-700">
+                New password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-medium text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+                  placeholder="At least 6 characters"
+                />
+              </label>
+              <label className="block text-xs font-bold text-slate-700">
+                Confirm new password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 text-sm font-medium text-ink outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-600/10"
+                  placeholder="Repeat your new password"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void saveNewPassword()}
+                disabled={recoveryLoading}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#064E3B] text-sm font-bold text-white shadow-md transition hover:bg-emerald-900 disabled:opacity-60"
+              >
+                {recoveryLoading ? "Updating password..." : "Update password"}
+              </button>
+            </div>
+          ) : tab === "login" ? (
             <div className="space-y-3.5">
               <label className="block text-xs font-bold text-slate-700">
                 {role === "parent" ? "Parent / mother email" : "Worker email"}
@@ -208,6 +349,15 @@ export function LoginPage() {
                   placeholder="Enter your password"
                 />
               </label>
+              <div className="-mt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setRecoveryStep("email"); setRecoveryEmailSent(false); }}
+                  className="text-xs font-bold text-emerald-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                >
+                  Forgot password?
+                </button>
+              </div>
 
               {/* Primary Action Button */}
               <button
@@ -225,12 +375,14 @@ export function LoginPage() {
           )}
 
           {/* Footer Link */}
-          <p className="mt-4 text-center text-xs text-slate-400">
-            New here?{" "}
-            <button type="button" onClick={() => setTab("register")} className="font-bold text-emerald-700 hover:underline">
-              Create an account
-            </button>
-          </p>
+          {tab === "login" && recoveryStep === null && (
+            <p className="mt-4 text-center text-xs text-slate-400">
+              New here?{" "}
+              <button type="button" onClick={() => setTab("register")} className="font-bold text-emerald-700 hover:underline">
+                Register
+              </button>
+            </p>
+          )}
         </main>
 
         {/* Page Footer Note */}
@@ -278,9 +430,6 @@ function RegisterPanel({ role, onBack }: { role: Role; onBack: () => void }) {
         </div>
       ) : (
         <>
-          <p className="text-xs font-bold text-slate-700">
-            Creating an account as {role === "asha" ? "ASHA Worker" : "Parent"}
-          </p>
           <label className="block text-xs font-bold text-slate-700">
             Full name
             <input
@@ -354,28 +503,27 @@ export function PageHero({ eyebrow, title, detail, image, action }: { eyebrow: s
   );
 }
 
-function SimpleVaccinationTimeline({ rows }: { rows: typeof vaccinationRecords }) {
+function LiveVaccinationTimeline({ rows }: { rows: DashboardResponse["vaccinationRecords"] }) {
   return (
     <div className="mt-4 space-y-3">
       {rows.map((record) => {
-        const isDone = record.status === "Completed";
-        const isOverdue = record.status === "Missed" || (record.daysOverdue && record.daysOverdue > 0);
-        
+        const isDone = Boolean(record.givenDate);
+        const isOverdue = !isDone && record.status === "Overdue";
         return (
-          <div key={record.id} className="animate-card-in flex items-center justify-between rounded-xl border border-emerald-100/80 bg-slate-50/80 p-3.5 transition hover:bg-slate-50 shadow-xs">
-            <div className="flex items-center gap-3.5">
-              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-white shadow-xs ${
-                isDone ? "bg-emerald-600 animate-check-pop" : isOverdue ? "bg-amber-500" : "bg-teal"
-              }`}>
+          <article key={record.id} className="flex items-center justify-between gap-4 rounded-xl border border-emerald-100/80 bg-slate-50/80 p-4 shadow-xs">
+            <div className="flex min-w-0 items-center gap-3.5">
+              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-white ${isDone ? "bg-emerald-600" : isOverdue ? "bg-amber-500" : "bg-teal"}`}>
                 {isDone ? <Check className="h-4.5 w-4.5 stroke-[3]" /> : isOverdue ? <AlertTriangle className="h-4.5 w-4.5" /> : <ClockIcon />}
               </span>
-              <div>
-                <p className="font-display text-sm font-extrabold text-ink">{record.vaccine} <span className="text-xs font-normal text-slate-400">({record.dose})</span></p>
-                <p className="text-xs text-slate-500">{isDone ? `Done on ${record.actualDate || record.scheduledDate}` : `Scheduled: ${record.scheduledDate}`}</p>
+              <div className="min-w-0">
+                <p className="font-display text-sm font-extrabold text-ink">{record.vaccine}</p>
+                <p className="text-xs text-slate-500">
+                  {isDone ? `Given ${formatDashboardDate(record.givenDate)}` : `Due ${formatDashboardDate(record.dueDate)}`}
+                </p>
               </div>
             </div>
             <StatusBadge status={record.status} />
-          </div>
+          </article>
         );
       })}
     </div>
@@ -387,6 +535,7 @@ export function ParentDashboard() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   useEffect(() => {
     let isActive = true;
     const loadDashboard = async () => {
@@ -409,7 +558,7 @@ export function ParentDashboard() {
     void loadDashboard();
     return () => { isActive = false; };
   }, []);
-  const dashboardChild = data?.children[0] ?? null;
+  const dashboardChild = data?.children.find((child) => child.id === selectedChildId) ?? data?.children[0] ?? null;
   const childRecords = data?.vaccinationRecords.filter(
     (record) => record.childId === dashboardChild?.id,
   ) ?? [];
@@ -430,12 +579,6 @@ export function ParentDashboard() {
   const [livePlan, setLivePlan] = useState<ReminderPlanResponse | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const alertRisk = livePlan?.risk_level ?? activeRisk;
-
-  // Registration Form State
-  const [step, setStep] = useState<1 | 2>(1);
-  const [generatedId, setGeneratedId] = useState("");
-  const [savingReg, setSavingReg] = useState(false);
-  const [regDob, setRegDob] = useState("2025-02-17");
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
@@ -471,18 +614,6 @@ export function ParentDashboard() {
     } finally {
       setLoadingPlan(false);
     }
-  };
-
-  const handleSubmitStep1 = (event: React.FormEvent) => {
-    event.preventDefault();
-    setSavingReg(true);
-    setTimeout(() => {
-      const newId = `CH${Math.floor(1000 + Math.random() * 9000)}`;
-      setGeneratedId(newId);
-      setSavingReg(false);
-      setStep(2);
-      toast.success("Child registered! Digital Health Card created.");
-    }, 400);
   };
 
   return (
@@ -555,12 +686,28 @@ export function ParentDashboard() {
 
         {/* SECTION 2: COMPLETE VACCINE JOURNEY & TIMELINE */}
         <section id="parent-journey" className="scroll-mt-28 surface-card min-w-0 animate-card-in p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
-          <SectionHeading eyebrow="Health Record" title="Complete Vaccine Journey & Timeline" detail="Clear timeline of completed, upcoming, and overdue immunisation doses." />
+          <SectionHeading
+            eyebrow="Health Record"
+            title="Complete Vaccine Journey & Timeline"
+            detail="Clear timeline of completed, upcoming, and overdue immunisation doses."
+            action={data && data.children.length > 1 ? (
+              <label className="text-xs font-bold text-slate-600">
+                Child
+                <select
+                  value={dashboardChild?.id ?? ""}
+                  onChange={(event) => { setSelectedChildId(event.target.value); setLivePlan(null); }}
+                  className="field-control mt-1 min-w-48"
+                >
+                  {data.children.map((child) => <option key={child.id} value={child.id}>{child.childName}</option>)}
+                </select>
+              </label>
+            ) : undefined}
+          />
           
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 my-5">
             <StatCard icon={HeartPulse} label="Total doses" value={loading ? "…" : error ? "—" : childRecords.length} description="Recorded doses for this child" tone="navy" />
             <StatCard icon={CheckCircle2} label="Completed" value={loading ? "…" : error ? "—" : childRecords.filter((record) => record.givenDate).length} description="Recorded as given" tone="teal" />
-            <StatCard icon={Calendar} label="Upcoming" value={loading ? "…" : error ? "—" : childRecords.filter((record) => record.status === "Pending").length} description="Due in the future" tone="blue" />
+            <StatCard icon={Calendar} label="Upcoming" value={loading ? "…" : error ? "—" : childRecords.filter((record) => record.status === "Pending" || record.status === "Due today").length} description="Upcoming scheduled doses" tone="blue" />
             <StatCard icon={AlertTriangle} label="Action needed" value={loading ? "…" : error ? "—" : childRecords.filter((record) => record.status === "Overdue").length} description="Past due, not yet given" tone="amber" />
           </div>
 
@@ -570,7 +717,7 @@ export function ParentDashboard() {
             empty={!loading && !error && childRecords.length === 0}
             emptyMessage="No vaccination records are available for this child."
           />
-          {childRecords.length > 0 && <SimpleVaccinationTimeline rows={childRecords} />}
+          {childRecords.length > 0 && <LiveVaccinationTimeline rows={childRecords} />}
         </section>
 
         {/* SECTION 3: ACTIVE ALERTS & REMINDERS */}
@@ -618,7 +765,7 @@ export function ParentDashboard() {
                 <p className="mt-4 text-sm text-slate-600 flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> Alert scheduled {reminder.days_before_vaccine} day(s) before via {reminder.channel}.</p>
               </article>
             )) : (
-              childRecords.filter((record) => record.status !== "Completed").map((reminder) => (
+              childRecords.filter((record) => !record.givenDate).map((reminder) => (
                 <article key={reminder.id} className="surface-card p-5 bg-white">
                   <div className="flex items-center justify-between">{activeRisk ? <RiskBadge risk={activeRisk} /> : <span className="text-xs text-slate-500">No risk prediction</span>}<StatusBadge status={reminder.status} /></div>
                   <h3 className="mt-4 font-display text-xl font-extrabold text-ink">{reminder.vaccine}</h3>
@@ -627,61 +774,34 @@ export function ParentDashboard() {
                 </article>
               ))
             )}
-            {!livePlan && childRecords.every((record) => record.status === "Completed") && (
+            {!livePlan && childRecords.every((record) => Boolean(record.givenDate)) && (
               <p className="text-sm text-slate-500">No pending or overdue doses for this child.</p>
             )}
           </div>
         </section>
 
-        {/* SECTION 4: CHILD REGISTRATION & DIGITAL CARD QR */}
+        {/* SECTION 4: LINKED CHILDREN */}
         <section className="surface-card min-w-0 animate-card-in p-4 sm:p-5 lg:p-8 border border-emerald-100/80 bg-white shadow-md shadow-emerald-950/5">
-          <SectionHeading eyebrow="Digital Health Card" title="Child Registration & Pass" detail="Quick registration and verified QR pass for frontline ASHA check-in." />
-
-          <div className="grid gap-8 lg:grid-cols-12 mt-6">
-            {/* Form Column */}
-            <div className="lg:col-span-7">
-              {step === 1 ? (
-                <form onSubmit={handleSubmitStep1} className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <label className="field-label">Full Name<input required className="field-control" defaultValue="Aarav Sharma" /></label>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Date of Birth</label>
-                      <DatePicker value={regDob} onChange={setRegDob} isDob={true} />
-                    </div>
-                    <label className="field-label">Gender<select className="field-control" defaultValue="Male"><option>Male</option><option>Female</option></select></label>
-                    <label className="field-label">Mother's Name<input required className="field-control" defaultValue="Priya Sharma" /></label>
-                    <label className="field-label">Email Address<input required type="email" className="field-control" defaultValue="priya@example.com" /></label>
-                    <label className="field-label">Village / City<input required className="field-control" defaultValue="Wagholi" /></label>
-                  </div>
-                  <button disabled={savingReg} className="primary-button bg-[#064E3B] hover:bg-emerald-900 mt-4 text-sm py-3 font-extrabold w-full sm:w-auto">
-                    {savingReg ? "Updating Pass..." : "Register / Update Profile"} <ArrowRight className={iconClass} />
-                  </button>
-                </form>
-              ) : (
-                <div className="p-6 rounded-2xl bg-emerald-50/70 border border-emerald-200">
-                  <h3 className="font-display text-xl font-extrabold text-emerald-950">Registration Complete!</h3>
-                  <p className="mt-1 text-sm text-emerald-900/80">Assigned ID: <strong className="font-mono text-base">{generatedId || "CH1004"}</strong></p>
-                  <button onClick={() => setStep(1)} className="secondary-button mt-4 text-xs py-1.5 px-3">Edit Details</button>
-                </div>
-              )}
-            </div>
-
-            {/* QR Card Column */}
-            <div className="min-w-0 lg:col-span-5 rounded-2xl border border-dashed border-teal-300 bg-teal-50/60 p-4 sm:p-5 lg:p-6 flex flex-col items-center justify-center text-center">
-              <QrCode className="h-32 w-32 text-teal mb-3" />
-              <p className="font-display text-lg font-extrabold text-ink">Digital Health Card Pass</p>
-              <p className="text-xs text-slate-500 mt-1 font-mono">ID: {generatedId || "CH1004"} · QR-{generatedId || "CH1004"}-MH</p>
-              <p className="text-xs text-slate-500 mt-2 leading-relaxed">Present this QR code to your ASHA worker for instant check-in and vaccine entry.</p>
-              <div className="mt-5 flex gap-2 w-full">
-                <button type="button" onClick={() => toast.info(`Pass Code: QR-${generatedId || "CH1004"}-MH`)} className="secondary-button text-xs flex-1 py-2 font-bold">
-                  <QrCode className={iconClass} /> Show Card
+          <SectionHeading eyebrow="Parent portal" title="Children linked to your account" detail="Choose a child to view their vaccination schedule, history, and reminders." />
+          {data?.children.length ? (
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {data.children.map((child) => (
+                <button
+                  key={child.id}
+                  type="button"
+                  aria-pressed={dashboardChild?.id === child.id}
+                  onClick={() => { setSelectedChildId(child.id); setLivePlan(null); }}
+                  className={`rounded-xl border p-4 text-left transition ${dashboardChild?.id === child.id ? "border-teal-300 bg-teal-50 shadow-sm" : "border-slate-200 bg-white hover:border-teal-200 hover:bg-teal-50/40"}`}
+                >
+                  <span className="block font-display font-extrabold text-ink">{child.childName}</span>
+                  <span className="mt-1 block text-xs text-slate-500">{child.village || "Village not assigned"} · {child.gender}</span>
+                  <span className="mt-3 block text-xs font-semibold text-teal">{child.nextVaccine || "No upcoming dose"}</span>
                 </button>
-                <button type="button" onClick={() => toast.success("Health Card downloaded as PDF!")} className="primary-button text-xs flex-1 py-2 font-bold">
-                  Download Pass
-                </button>
-              </div>
+              ))}
             </div>
-          </div>
+          ) : (
+            <DashboardNotice loading={loading} error={error} empty={!loading && !error} emptyMessage="No children are linked to this parent account yet." />
+          )}
         </section>
       </div>
     </AppShell>
@@ -728,29 +848,102 @@ export function ParentProfile() {
 
 function InfoBlock({ label, value, edit }: { label: string; value: string; edit: boolean }) { return <div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</p>{edit ? <input className="field-control mt-2" defaultValue={value} /> : <p className="mt-2 font-semibold text-ink">{value}</p>}</div>; }
 
+const demoVaccinationChild = {
+  id: "offline-child-aarav",
+  childName: "Aarav Sharma",
+};
+
+const demoVaccinationSchedule = [
+  { vaccine: "BCG", status: "Completed", dueDays: -900, givenDays: -899 },
+  { vaccine: "OPV 0", status: "Completed", dueDays: -900, givenDays: -899 },
+  { vaccine: "Hepatitis B 1", status: "Completed", dueDays: -900, givenDays: -898 },
+  { vaccine: "OPV 1", status: "Completed", dueDays: -858, givenDays: -856 },
+  { vaccine: "DPT 1", status: "Completed", dueDays: -858, givenDays: -856 },
+  { vaccine: "OPV 2", status: "Completed", dueDays: -830, givenDays: -828 },
+  { vaccine: "DPT 2", status: "Completed", dueDays: -830, givenDays: -828 },
+  { vaccine: "OPV 3", status: "Completed", dueDays: -802, givenDays: -800 },
+  { vaccine: "DPT 3", status: "Overdue", dueDays: -770, givenDays: null },
+  { vaccine: "Measles 1", status: "Overdue", dueDays: -630, givenDays: null },
+  { vaccine: "Measles 2", status: "Pending", dueDays: 12, givenDays: null },
+  { vaccine: "DPT Booster", status: "Pending", dueDays: 30, givenDays: null },
+  { vaccine: "OPV Booster", status: "Pending", dueDays: 45, givenDays: null },
+  { vaccine: "Vitamin A", status: "Pending", dueDays: 60, givenDays: null },
+] as const;
+
+function createDemoVaccinationRecords(): DashboardResponse["vaccinationRecords"] {
+  const today = new Date();
+  const dateAtOffset = (offsetDays: number) => {
+    const date = new Date(today);
+    date.setDate(date.getDate() + offsetDays);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  return demoVaccinationSchedule.map((dose, index) => {
+    const givenDate = dose.givenDays === null ? null : dateAtOffset(dose.givenDays);
+    return {
+      id: `offline-vaccine-${index + 1}`,
+      childId: demoVaccinationChild.id,
+      childName: demoVaccinationChild.childName,
+      vaccine: dose.vaccine,
+      dose: `Dose ${index + 1}`,
+      date: givenDate,
+      dueDate: dateAtOffset(dose.dueDays),
+      givenDate,
+      status: dose.status,
+      isDemo: true,
+    };
+  });
+}
+
+const demoVaccinationData: {
+  children?: typeof demoVaccinationChild[];
+  vaccinationRecords?: DashboardResponse["vaccinationRecords"];
+} = {
+  children: [demoVaccinationChild],
+  vaccinationRecords: createDemoVaccinationRecords(),
+};
+
 export function ParentVaccination() {
   const [, setLocation] = useLocation();
+  const [selectedChildId] = useState<string | null>(demoVaccinationChild.id);
 
+  const child = demoVaccinationData?.children?.find((item) => item.id === selectedChildId)
+    ?? demoVaccinationData?.children?.[0]
+    ?? null;
+  const records = demoVaccinationData?.vaccinationRecords?.filter(
+    (record) => record.childId === child?.id,
+  ) ?? [];
+  const completed = records.filter((record) => Boolean(record.givenDate)).length;
+  const upcoming = records.filter((record) => record.status === "Pending" || record.status === "Due today").length;
+  const overdue = records.filter((record) => record.status === "Overdue").length;
   return (
     <AppShell role="parent">
-      <PageHero eyebrow="Health Record" title="Vaccine Journey" detail="Clear timeline of done and upcoming vaccines." image={assets.parentCare} />
+      <PageHero eyebrow="Health Record" title="Vaccine Journey" detail="Your child's completed, upcoming, and overdue vaccination records." image={assets.parentCare} />
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-600">Offline sample vaccination history for {child?.childName ?? "your child"}.</p>
+        <DemoDataBadge />
+      </div>
+      <DashboardNotice loading={false} error={null} empty={!child} emptyMessage="No child is available in the offline sample data." />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="animate-card-in"><StatCard icon={HeartPulse} label="Total doses" value="6" description="Full protective series" tone="navy" /></div>
-        <div className="animate-card-in"><StatCard icon={CheckCircle2} label="Completed" value="3" description="Protected on time" tone="teal" /></div>
-        <div className="animate-card-in"><StatCard icon={Calendar} label="Upcoming" value="2" description="Next protection doses" tone="blue" /></div>
-        
-        {/* Tappable Action Needed Stat Card */}
+        <div className="animate-card-in"><StatCard icon={HeartPulse} label="Total doses" value={records.length} description="Scheduled for this child" tone="navy" /></div>
+        <div className="animate-card-in"><StatCard icon={CheckCircle2} label="Completed" value={completed} description="Recorded as given" tone="teal" /></div>
+        <div className="animate-card-in"><StatCard icon={Calendar} label="Upcoming" value={upcoming} description="Scheduled doses" tone="blue" /></div>
         <button
+          type="button"
           onClick={() => setLocation("/parent/reminders")}
           className="text-left w-full focus:outline-none focus:ring-2 focus:ring-amber-500 rounded-2xl transition hover:scale-[1.02]"
         >
-          <StatCard icon={AlertTriangle} label="Action needed" value="1" description="Tap to view reminder action →" tone="amber" />
+          <StatCard icon={AlertTriangle} label="Action needed" value={overdue} description="Past due, not yet given" tone="amber" />
         </button>
       </div>
 
       <div className="mt-7 surface-card animate-card-in p-6">
-        <SectionHeading eyebrow="Visual Timeline" title="Vaccine Journey" detail="Color-coded list: Green for done, Blue for upcoming, Orange for attention." />
-        <SimpleVaccinationTimeline rows={vaccinationRecords} />
+        <SectionHeading eyebrow="Visual Timeline" title={child ? `${child.childName}'s vaccine journey` : "Vaccine Journey"} detail="Sample immunization records shown offline." />
+        <DashboardNotice loading={false} error={null} empty={records.length === 0} emptyMessage="No vaccination entries are available for this child." />
+        {records.length > 0 && <LiveVaccinationTimeline rows={records} />}
       </div>
     </AppShell>
   );
@@ -759,134 +952,74 @@ export function ParentVaccination() {
 function ClockIcon() { return <Calendar className="h-4 w-4" />; }
 
 export function ParentReminders() {
-  const [voicePlaying, setVoicePlaying] = useState(false);
-  const [livePlan, setLivePlan] = useState<ReminderPlanResponse | null>(null);
-  const [loadingPlan, setLoadingPlan] = useState(false);
-
-  const createLivePlan = async () => {
-    setLoadingPlan(true);
-
-    try {
-      const parsedDueDate = new Date(primaryChild.nextDueDate || "2026-09-29");
-      const nextDoseDueDate = Number.isNaN(parsedDueDate.getTime())
-        ? "2026-09-29"
-        : parsedDueDate.toISOString().slice(0, 10);
-
-      const plan = await reminderService.createPlan({
-        child_id: primaryChild.childId || "CH1004",
-        child_name: primaryChild.childName || "Aarav Sharma",
-        next_vaccine: primaryChild.nextVaccine || "Penta-2",
-        missed_dose_count: primaryChild.missedDoses || 1,
-        next_dose_due_date: nextDoseDueDate,
-        preferred_language: "Marathi",
-      });
-
-      setLivePlan(plan);
-      toast.success("Alert schedule created!");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not load alerts.");
-    } finally {
-      setLoadingPlan(false);
-    }
+  const today = new Date();
+  const dateAfterDays = (days: number) => {
+    const date = new Date(today);
+    date.setDate(date.getDate() + days);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
-
-  const activeRisk = livePlan?.risk_level ?? primaryChild.riskLevel ?? "Low";
+  const reminders = [
+    {
+      id: "reminder-dpt2",
+      title: "DPT 2 vaccination",
+      dueDate: dateAfterDays(5),
+      status: "Pending",
+      message: "Aarav is due for the next DPT dose. Bring the vaccination card to the clinic.",
+      icon: Calendar,
+    },
+    {
+      id: "reminder-health-check",
+      title: "Child health checkup",
+      dueDate: dateAfterDays(8),
+      status: "Scheduled",
+      message: "A routine growth and wellness check is recommended for Aarav.",
+      icon: HeartPulse,
+    },
+    {
+      id: "reminder-measles",
+      title: "Measles dose follow-up",
+      dueDate: dateAfterDays(-3),
+      status: "Overdue",
+      message: "This dose is past due. Contact your ASHA worker to plan a catch-up visit.",
+      icon: AlertTriangle,
+    },
+  ];
 
   return (
     <AppShell role="parent">
       <PageHero eyebrow="Alerts" title="Reminders for Next Visit" detail="Friendly notifications so you never miss a dose." image={assets.parentCare} />
-      
-      <section className="surface-card animate-card-in border-amber-200 bg-amber-50/60 p-6">
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-700" /><RiskBadge risk={activeRisk} /></div>
-            <h2 className="mt-3 font-display text-2xl font-extrabold text-amber-950">{primaryChild.nextVaccine || "Penta-2"} Next Vaccine Reminder</h2>
-            <p className="mt-2 text-sm text-amber-900/80 flex items-center gap-1.5"><Info className="h-4 w-4 text-amber-700" /> Automatic reminder is set for 2 days before visit.</p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={createLivePlan} disabled={loadingPlan} className="primary-button text-base font-extrabold">
-              <Bell className={iconClass} />{loadingPlan ? "Setting up..." : "Get Reminders"}
-            </button>
-
-            {/* Prominent Audio Icon Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setVoicePlaying(!voicePlaying);
-                toast.success(voicePlaying ? "Voice paused" : "Playing Marathi voice reminder...");
-              }}
-              title="Listen in Voice"
-              className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl transition shadow-md ${
-                voicePlaying ? "bg-amber-600 text-white ring-4 ring-amber-300 animate-pulse" : "bg-white text-amber-800 border border-amber-300 hover:bg-amber-100"
-              }`}
-            >
-              <Volume2 className="h-6 w-6" />
-            </button>
-          </div>
-        </div>
-
-        {voicePlaying && (
-          <div className="mt-5 flex items-center gap-3 rounded-xl bg-white p-3.5 text-sm font-bold text-teal shadow-sm animate-card-in">
-            <Play className="h-5 w-5 fill-current text-teal animate-pulse" /> Audio reminder playing in Marathi...
-          </div>
-        )}
-      </section>
-
-      {/* Main Reminder Cards */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
-        {livePlan ? livePlan.reminders.map((reminder) => (
-          <article key={`${reminder.reminder_number}-${reminder.reminder_date}`} className="surface-card animate-card-in p-5">
-            <div className="flex items-center justify-between"><RiskBadge risk={livePlan.risk_level} /><StatusBadge status={reminder.status === "Immediate Overdue Trigger" ? "Overdue" : "Pending"} /></div>
-            <h3 className="mt-4 font-display text-xl font-extrabold text-ink">{reminder.next_vaccine}</h3>
-            <p className="mt-1 text-sm text-slate-500 flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Due {reminder.vaccine_due_date}</p>
-            <p className="mt-4 text-sm text-slate-600 flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> Alert scheduled {reminder.days_before_vaccine} day(s) before via {reminder.channel}.</p>
-          </article>
-        )) : reminders.length > 0 ? reminders.map((reminder) => (
-          <article key={reminder.id} className="surface-card animate-card-in p-5">
-            <div className="flex items-center justify-between"><RiskBadge risk={reminder.riskLevel} /><StatusBadge status={reminder.status} /></div>
-            <h3 className="mt-4 font-display text-xl font-extrabold text-ink">{reminder.vaccine}</h3>
-            <p className="mt-1 text-sm text-slate-500 flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Due {reminder.dueDate}</p>
-            <p className="mt-4 text-sm text-slate-600 flex items-center gap-1.5"><Bell className="h-4 w-4 text-teal" /> {reminder.message}</p>
-          </article>
-        )) : (
-          <article className="surface-card animate-card-in p-5 lg:col-span-3 text-center py-8">
-            <Bell className="h-8 w-8 text-teal mx-auto mb-2" />
-            <h4 className="font-display font-bold text-ink">Active Alert Plan Ready</h4>
-            <p className="text-xs text-slate-500 mt-1">Tap "Get Reminders" to generate server-enforced alerts.</p>
-          </article>
-        )}
+      <div className="my-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-600">Offline sample reminders for Aarav Sharma.</p>
+        <DemoDataBadge />
       </div>
-
-      {/* Reminder History List */}
-      <section className="mt-8 surface-card animate-card-in p-6">
-        <SectionHeading title="Reminder History" detail="Past notification logs sent to your email address." />
-        <div className="space-y-3 mt-4">
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-100">
-            <div className="flex items-center gap-3">
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-700">
-                <Check className="h-4 w-4 stroke-[3]" />
-              </span>
-              <div>
-                <p className="text-sm font-bold text-ink">Email Reminder: Penta-1 Visit</p>
-                <p className="text-xs text-slate-400">Sent 2 days ago via email (priya@example.com)</p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">Delivered ✓</span>
-          </div>
-
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 border border-slate-100">
-            <div className="flex items-center gap-3">
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-emerald-100 text-emerald-700">
-                <Check className="h-4 w-4 stroke-[3]" />
-              </span>
-              <div>
-                <p className="text-sm font-bold text-ink">WhatsApp Call Note: Scheduled Visit</p>
-                <p className="text-xs text-slate-400">Sent 1 week ago</p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">Delivered ✓</span>
-          </div>
+      <section className="surface-card animate-card-in p-5 sm:p-6">
+        <SectionHeading
+          eyebrow="Upcoming care"
+          title="Your reminders"
+          detail="Sample notifications to help keep your child's care on schedule."
+        />
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {reminders.map((reminder) => {
+            const ReminderIcon = reminder.icon;
+            return (
+              <article key={reminder.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-teal-50 text-teal">
+                    <ReminderIcon className="h-5 w-5" />
+                  </span>
+                  <StatusBadge status={reminder.status} />
+                </div>
+                <h2 className="mt-4 font-display text-lg font-extrabold text-ink">{reminder.title}</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  {reminder.status === "Overdue" ? "Was due" : "Due"} {formatDashboardDate(reminder.dueDate)}
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">{reminder.message}</p>
+              </article>
+            );
+          })}
         </div>
       </section>
     </AppShell>
@@ -1216,25 +1349,44 @@ export function AshaVaccinationEntry() {
   const [nextDueDate, setNextDueDate] = useState("2026-09-29");
 
   const fetchChild = () => {
-    const match = children.find((child) => child.childId.toLowerCase() === childId.toLowerCase());
+    const normalizedChildId = childId.trim().toLowerCase();
+    const match = children.find((child) => child.childId.toLowerCase() === normalizedChildId)
+      ?? (normalizedChildId === "ch1004"
+        ? {
+            ...primaryChild,
+            childId: "CH1004",
+            childName: "Aarav Sharma",
+            parentName: "Priya Sharma",
+            age: "6 months",
+            village: "Wagholi",
+            lastVaccine: "BCG",
+            nextVaccine: "DPT 2",
+            riskLevel: "Medium",
+          }
+        : null);
     setFound(match ?? null);
     if (match) toast.success(`${match.childName}'s profile is ready.`);
-    else toast.error("No child record found in the database.");
+    else toast.error("No child record found in the local demo data.");
   };
 
   const submit = async () => {
     setSaving(true);
-    const result = await vaccinationService.submitVaccination();
-    setSaving(false);
-    toast.success(result.message);
+    try {
+      const result = await vaccinationService.submitVaccination();
+      toast.success(`Demo Mode: ${result.message} This change was not sent to a server.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to record the demo vaccination.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <AppShell role="asha">
-      <PageHero eyebrow="Vaccination entry" title="Record a completed dose" detail="Search by Child ID, confirm profile, and submit completed vaccination details." image={assets.ashaCare} />
+      <PageHero eyebrow="Vaccination entry" title="Record a completed dose" detail="Search local demo children, then record a sample vaccination interaction." image={assets.ashaCare} />
       <div className="grid gap-6 xl:grid-cols-[.72fr_1.28fr]">
         <section className="surface-card p-6">
-          <SectionHeading title="1. Find the child" detail="Child ID is the primary record key." />
+          <SectionHeading title="1. Find the child" detail="Search the locally available sample child list." />
           <div className="flex gap-2">
             <input value={childId} onChange={(event) => setChildId(event.target.value)} className="field-control" placeholder="e.g. CH1004" />
             <button onClick={fetchChild} className="primary-button"><Search className={iconClass} />Fetch</button>
@@ -1259,7 +1411,7 @@ export function AshaVaccinationEntry() {
         </section>
 
         <form onSubmit={(event) => { event.preventDefault(); submit(); }} className="surface-card p-6">
-          <SectionHeading title="2. Enter vaccination details" detail="Directly connected to the backend vaccination service." />
+          <SectionHeading title="2. Enter vaccination details" detail="Submission is simulated locally and does not contact the backend." />
           <div className="grid gap-5 md:grid-cols-2">
             <label className="field-label">Child name<input className="field-control" value={found?.childName ?? ""} readOnly /></label>
             <label className="field-label">ASHA ID<input className="field-control" value={ashaProfile.ashaId || "ASHA-PUN-08"} readOnly /></label>

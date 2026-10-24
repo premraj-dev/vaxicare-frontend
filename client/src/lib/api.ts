@@ -359,6 +359,35 @@ export async function getAshaDashboard(signal?: AbortSignal): Promise<DashboardR
   return apiRequest<DashboardResponse>("/api/dashboard/asha", { signal });
 }
 
+export type RegisterChildForParentRequest = {
+  child_name: string;
+  child_surname: string;
+  date_of_birth: string;
+  gender: "Female" | "Male" | null;
+  parent_name: string;
+  parent_email: string;
+  parent_password: string;
+};
+
+export type RegisteredLinkedChild = {
+  id: string;
+  parent_id: string;
+  name: string;
+  surname: string;
+  date_of_birth: string;
+  gender: "Female" | "Male" | null;
+  parent_email: string;
+};
+
+export async function registerChildForParent(
+  payload: RegisterChildForParentRequest,
+): Promise<RegisteredLinkedChild> {
+  return apiRequest<RegisteredLinkedChild>("/api/dashboard/asha/children", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type InterventionRequest = {
   child_id: string;
   type: "call" | "reminder" | "home_visit" | "followup";

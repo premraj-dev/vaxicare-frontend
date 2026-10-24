@@ -6,6 +6,7 @@ import {
   Calendar,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   ClipboardCheck,
   HeartPulse,
@@ -13,6 +14,7 @@ import {
   ShieldAlert,
   UsersRound,
 } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { DemoDataBadge } from "@/components/DashboardNotice";
@@ -48,6 +50,7 @@ function PageHeading({ eyebrow, title, detail }: { eyebrow: string; title: strin
 function logout(setLocation: (path: string) => void) {
   localStorage.removeItem("access_token");
   localStorage.removeItem("user_profile");
+  toast.success("Demo session ended.");
   setLocation("/login");
 }
 
@@ -248,11 +251,11 @@ export function AshaDashboard() {
   return (
     <AppShell role="asha">
       <div className="min-w-0 space-y-6">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:p-7">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[.16em] text-teal">ASHA dashboard · Jategaon Bk</p>
-              <h1 className="mt-2 font-display text-3xl font-extrabold text-ink">Community care overview</h1>
+              <h1 className="mt-2 break-words font-display text-2xl font-extrabold text-ink sm:text-3xl">Community care overview</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-600">A local demo of all 37 children in your assigned community.</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -267,14 +270,14 @@ export function AshaDashboard() {
           <DemoDataBadge />
         </div>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
           <StatCard icon={UsersRound} label="Community children" value={metricValue(data.summary.totalChildren)} description="Jategaon Bk · demo caseload" tone="blue" />
           <StatCard icon={AlertTriangle} label="High risk" value={DEMO_COMMUNITY_RISK_COUNTS.high} description="Priority follow-up" tone="red" />
           <StatCard icon={Calendar} label="Medium risk" value={DEMO_COMMUNITY_RISK_COUNTS.medium} description="Routine follow-up" tone="amber" />
           <StatCard icon={CheckCircle2} label="Low risk" value={DEMO_COMMUNITY_RISK_COUNTS.low} description="On-track monitoring" tone="teal" />
         </section>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           <SectionHeading
             eyebrow="Assigned children"
             title="All 37 child profiles"
@@ -309,7 +312,7 @@ export function AshaDashboard() {
           </div>
         </section>
 
-        <section className="surface-card p-5 sm:p-6">
+        <section className="min-w-0 surface-card p-4 sm:p-5 lg:p-6">
           <SectionHeading eyebrow="First-time setup" title="Frontline onboarding & daily checklist" detail="Quick links for area setup, risk review, and vaccine recording." />
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <ChecklistLink href="/asha/area-registration" icon={<MapPin className="h-5 w-5 text-teal" />} title="Set up area" detail="Confirm area, district, taluka, and village." />
@@ -318,7 +321,7 @@ export function AshaDashboard() {
           </div>
         </section>
 
-        <section className="surface-card p-5 sm:p-6">
+        <section className="min-w-0 surface-card p-4 sm:p-5 lg:p-6">
           <SectionHeading
             eyebrow="Priority preview"
             title="Top high-risk children"
@@ -425,7 +428,7 @@ export function ParentVaccination() {
               </div>
             </div>
 
-            <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-3">
+            <div className="grid gap-5 p-5 sm:p-6 xl:grid-cols-3">
               <VaccineScheduleGroup
                 title="Completed"
                 detail="Doses recorded as administered."
@@ -473,6 +476,8 @@ function VaccineScheduleGroup({
   childId: string;
   tone: "emerald" | "amber" | "blue";
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleItems = expanded ? items : items.slice(0, 4);
   const toneClasses = {
     emerald: {
       header: "border-emerald-200 bg-emerald-50 text-emerald-900",
@@ -495,8 +500,8 @@ function VaccineScheduleGroup({
   }[tone];
 
   return (
-    <section className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50/60 p-3 sm:p-4">
-      <div className={`rounded-xl border p-4 ${toneClasses.header}`}>
+    <section className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50/60 p-4 sm:p-5">
+      <div className={`rounded-xl border p-4 sm:p-5 ${toneClasses.header}`}>
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-display text-lg font-extrabold">{title}</h3>
           <span className={`inline-flex min-w-8 justify-center rounded-full px-2.5 py-1 text-xs font-extrabold ring-1 ${toneClasses.count}`}>{items.length}</span>
@@ -508,45 +513,67 @@ function VaccineScheduleGroup({
           No vaccines in this section.
         </p>
       ) : (
-        <ol className="mt-3 space-y-3">
-          {items.map(({ vaccine, dueDateString, record, status }) => (
-            <li key={`${childId}-${vaccine.id}`} className={`rounded-xl border p-4 shadow-sm transition ${toneClasses.card}`}>
-              <div className="flex items-start gap-3">
-                <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl ${toneClasses.icon}`}>
-                  {status === "completed"
-                    ? <CheckCircle2 className="h-5 w-5" />
-                    : status === "due"
-                      ? <AlertTriangle className="h-5 w-5" />
-                      : <CalendarDays className="h-5 w-5" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <h4 className="font-bold text-ink">{vaccine.name}</h4>
-                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${
-                      status === "completed"
-                        ? "bg-emerald-100 text-emerald-800 ring-emerald-200"
-                        : status === "due"
-                          ? "bg-amber-100 text-amber-900 ring-amber-200"
-                          : "bg-slate-100 text-slate-700 ring-slate-200"
-                    }`}>
-                      {status === "completed" ? "Completed" : status === "due" ? "Due now" : "Upcoming"}
-                    </span>
+        <motion.ol id={`vaccine-list-${childId}-${tone}`} layout className="mt-4 grid gap-3">
+          <AnimatePresence initial={false}>
+            {visibleItems.map(({ vaccine, dueDateString, record, status }) => (
+              <motion.li
+                layout
+                key={`${childId}-${vaccine.id}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.18 }}
+                className={`rounded-xl border p-4 shadow-sm transition sm:p-5 ${toneClasses.card}`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl ${toneClasses.icon}`}>
+                    {status === "completed"
+                      ? <CheckCircle2 className="h-5 w-5" />
+                      : status === "due"
+                        ? <AlertTriangle className="h-5 w-5" />
+                        : <CalendarDays className="h-5 w-5" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <h4 className="font-bold text-ink">{vaccine.name}</h4>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-extrabold ring-1 ${
+                        status === "completed"
+                          ? "bg-emerald-100 text-emerald-800 ring-emerald-200"
+                          : status === "due"
+                            ? "bg-amber-100 text-amber-900 ring-amber-200"
+                            : "bg-slate-100 text-slate-700 ring-slate-200"
+                      }`}>
+                        {status === "completed" ? "Completed" : status === "due" ? "Due now" : "Upcoming"}
+                      </span>
+                    </div>
+                    {vaccine.description && (
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500">{vaccine.description}</p>
+                    )}
+                    <p className="mt-3 text-xs font-semibold text-slate-500">
+                      {status === "completed" && record?.administered_date
+                        ? `Administered ${formatDashboardDate(record.administered_date)}`
+                        : `${status === "due" ? "Due" : "Expected"} ${formatDashboardDate(dueDateString)}`}
+                      <span className="mx-1.5 text-slate-300">·</span>
+                      Recommended at {vaccine.recommended_age_days} days
+                    </p>
                   </div>
-                  {vaccine.description && (
-                    <p className="mt-1 text-xs leading-relaxed text-slate-500">{vaccine.description}</p>
-                  )}
-                  <p className="mt-3 text-xs font-semibold text-slate-500">
-                    {status === "completed" && record?.administered_date
-                      ? `Administered ${formatDashboardDate(record.administered_date)}`
-                      : `${status === "due" ? "Due" : "Expected"} ${formatDashboardDate(dueDateString)}`}
-                    <span className="mx-1.5 text-slate-300">·</span>
-                    Recommended at {vaccine.recommended_age_days} days
-                  </p>
                 </div>
-              </div>
-            </li>
-          ))}
-        </ol>
+              </motion.li>
+            ))}
+          </AnimatePresence>
+        </motion.ol>
+      )}
+      {items.length > 4 && (
+        <button
+          type="button"
+          aria-controls={`vaccine-list-${childId}-${tone}`}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+          className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-teal-200 hover:bg-teal-50/50 hover:text-teal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+        >
+          {expanded ? "Show Less" : `View All (${items.length})`}
+          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
+        </button>
       )}
     </section>
   );
@@ -554,6 +581,7 @@ function VaccineScheduleGroup({
 
 export function ParentReminders() {
   const [planCreated, setPlanCreated] = useState(false);
+  const [showAllReminders, setShowAllReminders] = useState(false);
   const child = DEMO_PARENT_DASHBOARD.children[0];
   const pendingRecords = DEMO_VACCINES
     .filter((vaccine) => vaccine.recommended_age_days > 70 && vaccine.recommended_age_days <= 270)
@@ -563,13 +591,14 @@ export function ParentReminders() {
       dueDate: dateAtAgeDays(child.dob, vaccine.recommended_age_days),
       status: "Upcoming",
     }));
+  const visiblePendingRecords = showAllReminders ? pendingRecords : pendingRecords.slice(0, 4);
 
   return (
     <AppShell role="parent">
       <PageHeading eyebrow="Alerts" title="Reminders" detail="Upcoming and overdue doses, with the latest reminder plan." />
       <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-900">Demo preview · reminder data is local to this browser.</p>
       {child && (
-        <section className="surface-card p-5 sm:p-6">
+        <section className="surface-card rounded-2xl p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-bold uppercase tracking-wide text-teal">{child.childName}</p>
@@ -581,26 +610,58 @@ export function ParentReminders() {
             </button>
           </div>
           {planCreated && (
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {pendingRecords.slice(0, 3).map((record, index) => (
-                <article key={record.id} className="rounded-xl border border-amber-100 bg-amber-50/50 p-4">
-                  <div className="flex items-center justify-between gap-2"><RiskBadge risk="Low" /><StatusBadge status="Pending" /></div>
-                  <p className="mt-3 font-bold text-ink">{record.vaccine}</p>
-                  <p className="mt-1 text-sm text-slate-500">Due {formatDashboardDate(record.dueDate)}</p>
-                  <p className="mt-2 text-sm text-slate-600">Sample reminder {index + 1} · local demo only.</p>
-                </article>
-              ))}
-            </div>
+            <motion.div id="parent-reminder-list" layout className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <AnimatePresence initial={false}>
+                {visiblePendingRecords.map((record, index) => (
+                  <motion.article
+                    layout
+                    key={record.id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.18 }}
+                    className="rounded-xl border border-amber-100 bg-amber-50/50 p-5 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2"><RiskBadge risk="Low" /><StatusBadge status="Pending" /></div>
+                    <p className="mt-3 font-bold text-ink">{record.vaccine}</p>
+                    <p className="mt-1 text-sm text-slate-500">Due {formatDashboardDate(record.dueDate)}</p>
+                    <p className="mt-2 text-sm text-slate-600">Sample reminder {index + 1} · local demo only.</p>
+                  </motion.article>
+                ))}
+              </AnimatePresence>
+            </motion.div>
           )}
-          {!planCreated && (
-            <div className="mt-5 space-y-3">
-              {pendingRecords.length ? pendingRecords.map((record) => (
-                <article key={record.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                  <div><p className="font-bold text-ink">{record.vaccine}</p><p className="mt-1 text-sm text-slate-500">Due {formatDashboardDate(record.dueDate)}</p></div>
-                  <StatusBadge status={record.status} />
-                </article>
-              )) : <p className="text-sm text-slate-500">No upcoming or overdue doses.</p>}
-            </div>
+          {!planCreated && (pendingRecords.length ? (
+              <motion.div id="parent-reminder-list" layout className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <AnimatePresence initial={false}>
+                  {visiblePendingRecords.map((record) => (
+                    <motion.article
+                      layout
+                      key={record.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.18 }}
+                      className="flex min-h-24 flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-5 shadow-sm transition hover:border-teal-200 hover:bg-teal-50/30"
+                    >
+                      <div><p className="font-bold text-ink">{record.vaccine}</p><p className="mt-1 text-sm text-slate-500">Due {formatDashboardDate(record.dueDate)}</p></div>
+                      <StatusBadge status={record.status} />
+                    </motion.article>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
+            ) : <p className="mt-5 text-sm text-slate-500">No upcoming or overdue doses.</p>)}
+          {pendingRecords.length > 4 && (
+            <button
+              type="button"
+              aria-controls="parent-reminder-list"
+              aria-expanded={showAllReminders}
+              onClick={() => setShowAllReminders((current) => !current)}
+              className="mt-5 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-teal-200 hover:bg-teal-50/50 hover:text-teal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+            >
+              {showAllReminders ? "Show Less" : `View All (${pendingRecords.length})`}
+              <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showAllReminders ? "rotate-180" : ""}`} />
+            </button>
           )}
         </section>
       )}

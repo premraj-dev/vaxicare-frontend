@@ -6,9 +6,10 @@ import { Route, Switch, useLocation } from "wouter";
 import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { AshaAreaRegistration, AshaRegister, AshaVaccinationEntry, AshaVaccinationHistory, LoginPage, NotFoundPage } from "./pages/PortalPages";
+import { AshaAreaRegistration, AshaRegister, AshaVaccinationEntry, AshaVaccinationHistory, LoginPage, NotFoundPage, ParentReminders, ParentVaccination } from "./pages/PortalPages";
 import { AshaAnalytics, AshaInterventions, AshaRiskDashboard } from "./pages/LiveDashboardPages";
-import { AshaDashboard, AshaProfile, ParentDashboard, ParentProfile, ParentReminders, ParentVaccination } from "./pages/PortalDashboardPages";
+import { AshaProfile, ParentProfile } from "./pages/PortalDashboardPages";
+import { AshaDashboardPage, ParentDashboardPage } from "./pages/DashboardPages";
 
 function getStoredUserProfile(): { role?: string } | null {
   if (typeof window === "undefined") return null;
@@ -70,11 +71,11 @@ function Router() {
     <Switch>
       <Route path="/" component={RedirectToLogin} />
       <Route path="/login" component={LoginPage} />
-      <Route path="/parent/dashboard" component={() => <ProtectedRoute role="parent" component={ParentDashboard} />} />
+      <Route path="/parent/dashboard" component={() => <ProtectedRoute role="parent" component={ParentDashboardPage} />} />
       <Route path="/parent/profile" component={() => <ProtectedRoute role="parent" component={ParentProfile} />} />
       <Route path="/parent/vaccination" component={() => <ProtectedRoute role="parent" component={ParentVaccination} />} />
       <Route path="/parent/reminders" component={() => <ProtectedRoute role="parent" component={ParentReminders} />} />
-      <Route path="/asha/dashboard" component={() => <ProtectedRoute role="asha" component={AshaDashboard} />} />
+      <Route path="/asha/dashboard" component={() => <ProtectedRoute role="asha" component={AshaDashboardPage} />} />
       <Route path="/asha/area-registration" component={() => <ProtectedRoute role="asha" component={AshaAreaRegistration} />} />
       <Route path="/asha/register" component={() => <ProtectedRoute role="asha" component={AshaRegister} />} />
       <Route path="/asha/vaccination-entry" component={() => <ProtectedRoute role="asha" component={AshaVaccinationEntry} />} />

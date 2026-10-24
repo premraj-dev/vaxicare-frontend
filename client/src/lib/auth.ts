@@ -30,6 +30,26 @@ export async function registerWithPassword(
   if (error) throw error;
 }
 
+export async function sendPasswordResetEmail(email: string): Promise<void> {
+  const redirectTo = typeof window === "undefined" ? undefined : `${window.location.origin}/login`;
+  const { error } = await getSupabaseClient().auth.resetPasswordForEmail(email.trim(), {
+    redirectTo,
+  });
+  if (error) throw error;
+}
+
+export async function updatePassword(password: string): Promise<void> {
+  const { error } = await getSupabaseClient().auth.updateUser({ password });
+  if (error) throw error;
+}
+
+export function onPasswordRecovery(callback: () => void): () => void {
+  const { data } = getSupabaseClient().auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") callback();
+  });
+  return () => data.subscription.unsubscribe();
+}
+
 export async function loginWithPassword(email: string, password: string) {
   const { data, error } = await getSupabaseClient().auth.signInWithPassword({
     email: email.trim(),

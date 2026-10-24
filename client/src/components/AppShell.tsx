@@ -1,7 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Bell, HeartPulse, Home, LayoutDashboard, LogOut, ShieldAlert, UserRound, UsersRound, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
-import { logout as signOut } from "@/lib/auth";
 import type { Role } from "@/types";
 import { BrandMark } from "@/components/BrandMark";
 
@@ -20,26 +19,27 @@ const ashaNav = [
   { href: "/asha/profile", label: "Profile", icon: UserRound },
 ];
 
-export function AppShell({ role, children }: { role: Role; children: React.ReactNode }) {
+export function AppShell({
+  role,
+  children,
+}: {
+  role: Role;
+  children: React.ReactNode;
+}) {
   const [location, setLocation] = useLocation();
   const nav = role === "parent" ? parentNav : ashaNav;
   const portalLabel = role === "parent" ? "Parent care" : "ASHA care";
-  const logout = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to sign out.");
-    } finally {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("user_profile");
-      setLocation("/login");
-    }
+  const logout = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user_profile");
+    toast.success("Demo session ended.");
+    setLocation("/login");
   };
 
   return (
-    <div className="min-h-screen bg-mist flex flex-col">
-      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/92 px-3 backdrop-blur-xl sm:h-16 sm:px-4 lg:px-7">
-        <div className="flex items-center gap-3">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-mist">
+      <header className="sticky top-0 z-30 flex h-14 flex-none items-center justify-between gap-2 border-b border-slate-200/80 bg-white/92 px-3 backdrop-blur-xl sm:h-16 sm:px-4 lg:px-7">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <BrandMark />
           <span className="hidden rounded-full bg-teal-50 px-3 py-1 text-[10px] font-extrabold uppercase tracking-[.13em] text-teal sm:block">
             {portalLabel}
@@ -55,15 +55,17 @@ export function AppShell({ role, children }: { role: Role; children: React.React
         </button>
       </header>
 
-      <main className="page-pad min-w-0 flex-1 pb-24">{children}</main>
+      <main className="page-pad min-w-0 flex-1 pb-28">
+        {children}
+      </main>
 
-      <nav aria-label={`${portalLabel} navigation`} className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/96 px-1 py-2 backdrop-blur shadow-lg sm:px-2">
-        <div className={`mx-auto grid max-w-2xl ${role === "parent" ? "grid-cols-4" : "grid-cols-5"} items-center gap-1`}>
+      <nav aria-label={`${portalLabel} navigation`} className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/96 px-1 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-lg backdrop-blur sm:px-2">
+        <div className={`mx-auto grid w-full max-w-2xl ${role === "parent" ? "grid-cols-4" : "grid-cols-5"} items-center gap-1`}>
           {nav.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
-              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-[9px] font-bold transition sm:flex-row sm:justify-center sm:gap-2 sm:px-2 sm:text-xs ${
+              className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-0.5 py-1.5 text-[8px] font-bold leading-tight transition sm:flex-row sm:justify-center sm:gap-2 sm:px-2 sm:text-xs ${
                 location === href ? "bg-teal-50 text-teal shadow-xs" : "text-slate-500 hover:bg-slate-50"
               }`}
             >
